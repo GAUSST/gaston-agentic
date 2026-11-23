@@ -17,7 +17,7 @@ MANIFEST = '.agentic/manifest.json'
 # Explicit root-level and documentation files shipped with Gaston. Do not
 # authorize arbitrary docs/ content: it may belong to the application.
 KNOWN_ROOTS = frozenset({
-    '.github/workflows/native-cli-validation.yml', '.github/workflows/release.yml', 'dev', 'gaston_cli.py', 'pyproject.toml', 'README.md', 'AGENTS.md', 'CLAUDE.md', '.gitignore',
+    '.github/workflows/native-cli-validation.yml', '.github/workflows/release.yml', 'dev', 'gaston_cli.py', 'pyproject.toml', 'README.md', 'AGENTS.md', 'CLAUDE.md', '.gitignore', '.gitattributes',
     'docs/LESSONS.md', 'docs/UPDATES.md', 'docs/BACKEND_VERIFICATION.md',
     'docs/TEST_PLAN_FROM_CURRENT_STATE.md', 'docs/VERIFICATION.md',
     'docs/LEAD_WORKSPACE_OPERATIONS.md', 'docs/RELEASE_V28.md',

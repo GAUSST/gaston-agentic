@@ -55,7 +55,7 @@
     ".agentic/test_lead_workspace.py": "8a253a70262a45425bb1676095c03408bc2f34a5b1f7ed37b7f85abd8565b624",
     ".agentic/test_native_cross_platform.py": "0aa884c81e79f7528ff6757ed6064076215ab797e1e88e479febedea2912307f",
     ".agentic/test_project_continuity.py": "6692932d431441ae181021244a8f34b2baaa5024468394b49146992ee8ffef30",
-    ".agentic/test_release_integrity.py": "380fc9c1103658a66fac2087cf3eb0a13e8937aa56fed8224143f7154fc10516",
+    ".agentic/test_release_integrity.py": "4597a7e47cd6ebf9de2b4b7c4fe11c268dd53f8604b6608a1afae20a5e58c55c",
     ".agentic/test_runtime_recovery.py": "481b616920ef85aefbefc6567bb5c0e29b93bdf43f09f61ebdefade787a6b7da",
     ".agentic/test_uninstall.py": "df6cb574f9a36da29643a981bbc5720c27a73307db51c232c8c724edd6ce04b2",
     ".agentic/test_v25.py": "f3c8c87b769d92d1750ba67d55f4ed88977a68446d9765125bd62d7bfc3c0251",
@@ -78,7 +78,7 @@
     ".agentic/test_v47.py": "5767f5a619aa81e5f3a28d1b8a62f9d1d4ac814737ba1c73bcd1283a2660b0a4",
     ".agentic/test_workspace_ops.py": "24c143ecf69ffbb5e7bdea167232a188a2bca3322e8c8a25cfbed0c0a61206a3",
     ".agentic/token_intelligence.py": "14157db29b09e09ce8fa018a25ce956c4451ca96d7d3e07607c7ec3b15aaac94",
-    ".agentic/uninstall.py": "05ea0a8892bcedc4b9e5fef293900f7bfc61e7710260985de6e8ef930ef7fa23",
+    ".agentic/uninstall.py": "1d40227f224bb4eca1e775edfb33347a4a4c763725f689eb73f960c23fddd57f",
     ".agentic/verification_brief.py": "4e85115e1243ac0d9ee934fe8b42d6ddef2fa050dfe6dbf201eaf0deff5f472f",
     ".agentic/verification_mcp.py": "9cce64b056ff6c5deb65f6175e57c8097378fcbfb23b9ec868216643c074e1d9",
     ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
@@ -104,7 +104,8 @@
     ".agentic/test_updater.py": "bdc50f82d584d09445d32318b1c5507c849c170f38376b28fcae84bd0cf65df7",
     ".github/workflows/release.yml": "3315599921464312a7b57ec8854e1d64ddc9b8f363d98d702051f53c94369ef6",
     "docs/UPDATES.md": "e72dfe9ac8a5b867f2a3c108d88fbc8de95d3e23fa17d1e0138a5c5d9ecd489d",
-    ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34"
+    ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34",
+    ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
   },
   "build": "1.5.2"
 }
