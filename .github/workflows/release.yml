@@ -69,7 +69,7 @@ jobs:
           import json, os, urllib.request
           repo=os.environ['REPOSITORY']; tag=os.environ['TAG']; token=os.environ['GH_TOKEN']
           def fetch(path):
-              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/'+path,headers={'Authorization':'Bearer '+token,'User-Agent':'Gaston-release/1.5.2','Accept':'application/vnd.github+json'})
+              req=urllib.request.Request('https://api.github.com/repos/'+repo+'/'+path,headers={'Authorization':'Bearer '+token,'User-Agent':'Gaston-release/1.5.3','Accept':'application/vnd.github+json'})
               with urllib.request.urlopen(req,timeout=15) as r: return json.load(r)
           ref=fetch('git/ref/tags/'+tag)
           assert ref['object']['type']=='tag', 'Release tag must be annotated and signed'

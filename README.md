@@ -1,4 +1,4 @@
-# Gaston Agentic — v1.5.2
+# Gaston Agentic — v1.5.3
 
 Gaston is a **project-agnostic** engineering tool. It discovers the current
 project's stack, routes, tests, workflow, and conventions; no application name

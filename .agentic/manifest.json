@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.5.2",
+  "release": "v1.5.3",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "41b7ad107c1894b4f3ee9db0d2955c93f3acb7601059773588ce6f10e55e4078",
@@ -92,20 +92,20 @@
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "15bc681b7af988820a219d3bdede340f98fdbf7649b3605adc49488c39a33051",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "622ae33144d5467071b19b5449be468e6eef8b46a6411627f3c0513c323fddb7",
+    "README.md": "dd43707edc20b689f4f0de7cc337b1253f847ca18b67abfbad7906eb8012e09c",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "cf68200fd9600abf9703649e9ec3c65d047be34af42872a8f6c24beb562106b9",
     "gaston_cli.py": "ec913b3bb5a084e98246e96e1087333b2ec3cff46dd41610bdefcbaf20bf1cde",
-    "pyproject.toml": "093c4d8a36106cd9057c59a656a41cf94aaf65e7e0a46d03a4a99120c277f879",
-    ".agentic/updater.py": "9aa4928fb647a8764ef32626eaa1150fb5dac6bb304e499f7b2ece79b83df897",
+    "pyproject.toml": "c74e7ce763ace3fce07f3be60acd1842c16afea1c05a1cc02e684476b3f19a13",
+    ".agentic/updater.py": "43c57bb131f5320d37a4f2f0960aa940d548fc9e81922475d85449ab4198d10a",
     ".agentic/test_updater.py": "bdc50f82d584d09445d32318b1c5507c849c170f38376b28fcae84bd0cf65df7",
-    ".github/workflows/release.yml": "3315599921464312a7b57ec8854e1d64ddc9b8f363d98d702051f53c94369ef6",
-    "docs/UPDATES.md": "e72dfe9ac8a5b867f2a3c108d88fbc8de95d3e23fa17d1e0138a5c5d9ecd489d",
+    ".github/workflows/release.yml": "cee62fa6e3307041568951cb47a5497bdbb5c582ef3d08e04aed8aa435a87072",
+    "docs/UPDATES.md": "06d68fbafbfcea3f53facae2712545b59150ec11e3d2856f9933e51aedef15f6",
     ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34",
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
   },
-  "build": "1.5.2"
+  "build": "1.5.3"
 }
