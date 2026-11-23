@@ -15,7 +15,7 @@ import gaston_cli
 class NativePlatformTests(unittest.TestCase):
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
-            root=Path(td);(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
+            root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
             inner=root/'a'/'b';inner.mkdir(parents=True)
             with patch.dict(os.environ,{'GASTON_ROOT':''}):
                 self.assertEqual(gaston_cli.workspace(inner),root)

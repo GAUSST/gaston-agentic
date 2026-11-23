@@ -20,6 +20,14 @@ class ReleaseIntegrityTests(unittest.TestCase):
         self.assertEqual(result['status'], 'pass', result)
         self.assertGreater(result['python_files'], 30)
 
+    def test_checkout_preserves_manifest_bytes_on_all_platforms(self):
+        # Git for Windows otherwise converts checked-out LF to CRLF,
+        # invalidating strict SHA-256 checks for nearly every toolkit file.
+        attributes = (ROOT / '.gitattributes').read_text(encoding='utf-8')
+        self.assertIn('* text=auto eol=lf', attributes.splitlines())
+        manifest = json.loads((ROOT / '.agentic/manifest.json').read_text())
+        self.assertIn('.gitattributes', manifest['files'])
+
     def test_handshake_and_live_status_agree_with_manifest(self):
         manifest_bytes = (ROOT / '.agentic/manifest.json').read_bytes()
         manifest = json.loads(manifest_bytes)
