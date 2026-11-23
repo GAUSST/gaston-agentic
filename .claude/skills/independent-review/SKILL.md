@@ -1,0 +1,12 @@
+---
+name: independent-review
+description: Independently review a finished code change against acceptance criteria, tests, architecture, fintech/security invariants and evidence. Use for final verification, not implementation.
+---
+
+Operate read-only during review. For test authoring and scoped repairs use the scoped Lead tools, then obtain fresh evidence. Inspect changed files instead of trusting an implementer's summary. Compare requirement-by-requirement with code, tests and observed evidence. Review the end-to-end architecture: domain boundaries and ownership, dependencies/coupling, API and data contracts, migrations, reliability and operability, security assumptions, failure handling, scalability constraints and meaningful tradeoffs. Demand architectural depth proportionate to the task; do not confuse minimal edits or cosmetic simplicity with production quality, and do not demand speculative layers without evidence. Identify correctness and maintainability issues with file references and priority. Check Java transaction boundaries, PostgreSQL constraints/locking, authorization, sensitive logging, mobile behavior and error handling when in scope. For fintech features use the enabled policy files listed in `.agentic/config.json`. List any unexecuted test, missing device, absent backend or unclear regulatory requirement as a *coverage gap*. Report pass/change-request/blocked, never claim evidence you have not obtained. Do not silently approve a feature because the builder says tests passed.
+
+
+Run targeted Maestro/Playwright test scenarios only against authorized local or
+sandbox applications. If an installed Android emulator is disconnected, attempt `gaston_verify.start_existing_emulator` and confirm it connects before asking the developer. If Playwright MCP system Chrome crashes, use `gaston_browser` with managed Chromium when available, diagnose the browser, then independently run an isolated Playwright smoke test. Never claim Playwright MCP passed solely because Playwright Test passed.
+
+Follow the shared `AGENTS.md` contract for role boundaries, scoped test authoring, real runtime acceptance, code/readability review, document review and workspace operations. Use `task_code_review` and `record_code_review` for exact changed source paths; independently resolve findings and recheck the current revision. The private verifier is available to registered Lead sessions of either provider. The Builder does not author or execute the Lead's tests.
