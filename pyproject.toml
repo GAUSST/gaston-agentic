@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gaston-agentic-cli"
+version = "1.5.1"
+description = "Gaston native engineering CLI for existing Gaston workspaces"
+requires-python = ">=3.10"
+dependencies = ["psutil>=5.9; sys_platform == 'win32' or sys_platform == 'darwin'"]
+
+[project.scripts]
+dev = "gaston_cli:main"
+
+[tool.setuptools]
+py-modules = ["gaston_cli"]

@@ -1,0 +1,42 @@
+name: Gaston native CLI validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  native-cli:
+    name: ${{ matrix.os }} / Python ${{ matrix.python-version }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ['3.11', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install installed CLI
+        run: python -m pip install .
+      - name: CLI executable from PATH
+        run: dev --help
+      - name: Native locking and dispatcher tests
+        run: python -m unittest discover -s .agentic -p 'test_launcher.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Native lifecycle tests
+        run: python -m unittest discover -s .agentic -p 'test_native_cross_platform.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Engineering quality contract regression
+        run: python -m unittest discover -s .agentic -p 'test_engineering_quality_contract.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Package integrity
+        run: python .agentic/release_audit.py
+      - name: Full regression suite (Linux)
+        if: runner.os == 'Linux'
+        run: python -m unittest discover -s .agentic -p 'test_*.py' -q
+        env:
+          PYTHONPATH: .agentic

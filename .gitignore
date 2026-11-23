@@ -1,0 +1,40 @@
+.agentic/runs/
+.agentic/*.local.json
+.agentic/**/*.log
+.env
+.env.*
+!.env.example
+**/target/
+**/build/
+.dart_tool/
+.idea/
+# Personal sessions, feedback screenshots, handoffs and local context (not shared via Git)
+.agentic/local/
+
+__pycache__/
+*.pyc
+
+# Developer-specific native hook registrations (machine-local paths)
+.claude/settings.local.json
+.codex/hooks.json
+
+# Serena generated indexes and local memories
+.serena/cache/
+.serena/memories/
+
+# Persistent local development database credentials (not distributable)
+.gaston-dev-db/
+
+# Toolkit-private local data must never enter a public source repository
+.agentic/config.json
+.agentic/tasks/
+.agentic/evidence/
+.agentic/custom/
+.agentic/snapshots/
+.agentic/exports/
+.codex/settings.json
+.gaston-update-cache/
+# Bytecode, package builds, and local installation artifacts
+*.egg-info/
+dist/
+*.whl
