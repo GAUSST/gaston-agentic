@@ -1,4 +1,4 @@
-# Publishing and updating Gaston v1.5.1
+# Publishing and updating Gaston v1.5.2
 
 ## Trust and distribution
 
@@ -8,12 +8,12 @@ provider configuration from an installed project. Publish only the audited
 source release tree provided here (not a working application repository).
 
 The public source repository is **https://github.com/GAUSST/gaston-agentic**.
-It is the only intended official update publisher. Before the first release:
+It is the only intended official update publisher. Before publishing a verified release:
 
 1. Verify the published source contains only toolkit-owned files and no secrets.
 2. Require CI and protect the `main` branch and release tags.
-3. Create a **cryptographically signed annotated** tag `v1.5.1` pointing to
-   the verified release commit (`git tag -s v1.5.1 -m 'Gaston v1.5.1'`), then
+3. Create a **cryptographically signed annotated** tag `v1.5.2` pointing to
+   the verified release commit (`git tag -s v1.5.2 -m 'Gaston v1.5.2'`), then
    push the tag. Configure signature verification on GitHub beforehand.
 4. The `release.yml` workflow checks tag/build identity and audit/test gates
    across all three systems before publishing a GitHub Release. No ZIPs are
