@@ -38,7 +38,7 @@ ERROR_RETRY_SECONDS = 60 * 60
 MAX_JSON = 1024 * 1024
 MAX_ARCHIVE = 40 * 1024 * 1024
 MAX_UNPACKED = 80 * 1024 * 1024
-AGENT = 'Gaston-Agentic-updater/1.5.3'
+AGENT = 'Gaston-Agentic-updater/1.5.4'
 
 
 class UpdateError(RuntimeError):
@@ -406,7 +406,14 @@ def _restore(root: Path, identifier: str) -> None:
 
 
 def recover(root: Path) -> bool:
-    """Restore after a killed update before permitting any CLI command."""
+    """Restore after a killed update before permitting any CLI command.
+
+    Normalize the trusted workspace root before accessing update metadata.
+    macOS aliases /var to /private/var; checking unnormalized ancestors would
+    otherwise reject valid metadata despite using a canonical backup path.
+    Symlinks *inside* the workspace remain rejected by evolution.safe.
+    """
+    root = Path(root).resolve()
     journal = store(root) / 'journal.json'
     if not journal.exists():
         return False
