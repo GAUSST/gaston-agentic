@@ -92,7 +92,7 @@
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "15bc681b7af988820a219d3bdede340f98fdbf7649b3605adc49488c39a33051",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "6e7a706df4c37d85f3e063adcd951ec6dc42ddf7d903e1e6c5e41fbbcc2d07ff",
+    "README.md": "0068efe2375ad90c8f48dd7e68118c42abac7992ae303e759a1285b02bcb007e",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
@@ -103,7 +103,7 @@
     ".agentic/updater.py": "344712cd227daa41d155bc4622a067d71752bfafb7589ad47467ea67598c1be7",
     ".agentic/test_updater.py": "bdc50f82d584d09445d32318b1c5507c849c170f38376b28fcae84bd0cf65df7",
     ".github/workflows/release.yml": "5ff0cb42b1c5c1fdd87ee3f650996fae937eef10ed77e4fb541ca9cbcb56a07d",
-    "docs/UPDATES.md": "f3cb1e542c264787d5ff89da421f7aa0e0d6089171cb9be70549e46d07a32af7",
+    "docs/UPDATES.md": "fcaa3a0d3d079fff187d64c8bcc51a6baf1bbf515c75dacf6e943233f87aac19",
     ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34"
   },
   "build": "1.5.1"

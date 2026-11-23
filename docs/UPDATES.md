@@ -7,20 +7,19 @@ Gaston is **generic software**. Never publish application source, `.agentic/loca
 provider configuration from an installed project. Publish only the audited
 source release tree provided here (not a working application repository).
 
-The official public GitHub repository does not exist yet. After creating it:
+The public source repository is **https://github.com/GAUSST/gaston-agentic**.
+It is the only intended official update publisher. Before the first release:
 
-1. Upload and review the *source-only* tree. Audit the complete Git history
-   and tracked files for secrets before making it public.
-2. Add branch protection and required GitHub Actions checks. Protect release
-   tags and restrict who can publish a release.
+1. Verify the published source contains only toolkit-owned files and no secrets.
+2. Require CI and protect the `main` branch and release tags.
 3. Create a **cryptographically signed annotated** tag `v1.5.1` pointing to
-   the audited release commit (`git tag -s v1.5.1 -m 'Gaston v1.5.1'`), then
+   the verified release commit (`git tag -s v1.5.1 -m 'Gaston v1.5.1'`), then
    push the tag. Configure signature verification on GitHub beforehand.
 4. The `release.yml` workflow checks tag/build identity and audit/test gates
    across all three systems before publishing a GitHub Release. No ZIPs are
    manually created for subsequent updates; GitHub's exact-commit source
    snapshot is used by the updater.
-5. On an existing installation, run `dev update --set-repo OWNER/REPO` once.
+5. On an existing installation, run `dev update --set-repo GAUSST/gaston-agentic` once.
    The installer requires the user to type the exact publisher name to trust
    it. `dev update --check` reports a new stable release; `dev update` verifies,
    asks for consent, applies, and records a recovery snapshot.
