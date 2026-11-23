@@ -28,6 +28,14 @@ class ReleaseIntegrityTests(unittest.TestCase):
         manifest = json.loads((ROOT / '.agentic/manifest.json').read_text())
         self.assertIn('.gitattributes', manifest['files'])
 
+    def test_release_ci_installs_native_runtime_dependencies(self):
+        workflow = (ROOT / '.github/workflows/release.yml').read_text(encoding='utf-8')
+        self.assertIn('python -m pip install .', workflow)
+        self.assertLess(workflow.index('python -m pip install .'),
+                        workflow.index("- name: Update and CLI regression tests"))
+        pyproject = (ROOT / 'pyproject.toml').read_text(encoding='utf-8')
+        self.assertIn('psutil>=5.9', pyproject)
+
     def test_handshake_and_live_status_agree_with_manifest(self):
         manifest_bytes = (ROOT / '.agentic/manifest.json').read_bytes()
         manifest = json.loads(manifest_bytes)

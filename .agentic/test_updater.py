@@ -240,6 +240,27 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual((self.root/'.agentic/example.py').read_bytes(), b'VALUE = "new"\n')
         self.assertTrue((updater.store(self.root)/'journal.json').exists())
 
+    def test_recovery_accepts_canonical_workspace_alias(self):
+        # macOS tempfile roots may arrive as /var while the OS resolves them
+        # to /private/var. An aliased workspace root must not break recovery.
+        with tempfile.TemporaryDirectory() as other:
+            alias = Path(other) / 'workspace-alias'
+            try:
+                alias.symlink_to(self.root, target_is_directory=True)
+            except (OSError, NotImplementedError):
+                self.skipTest('Directory symlinks not supported')
+            next_manifest, payload = self.payload()
+            identifier, _ = updater._backup(
+                self.root, self.manifest['files'], next_manifest['files'],
+                (self.root / '.agentic/manifest.json').read_bytes())
+            self.write('.agentic/example.py', payload['.agentic/example.py'][0])
+            updater._put_json(updater.store(self.root) / 'journal.json',
+                              {'backup': identifier, 'target': 'v1.5.2'})
+            self.assertTrue(updater.recover(alias))
+            self.assertEqual((self.root / '.agentic/example.py').read_bytes(),
+                             self.files['.agentic/example.py'])
+            self.assertFalse((updater.store(self.root) / 'journal.json').exists())
+
     def test_interrupted_update_recovered_before_next_command(self):
         next_manifest, payload = self.payload()
         identifier, _ = updater._backup(self.root, self.manifest['files'], next_manifest['files'],
