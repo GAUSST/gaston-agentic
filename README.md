@@ -10,9 +10,9 @@ contract compatibility and evidence-backed review, scaled to actual project risk
 The established command contract is unchanged: `dev init`, `dev`, `dev models`,
 `dev sessions`, `dev uninstall`. v1.5.1 adds **`dev update`** and a cached,
 non-blocking, at-most-daily notification on `dev` startup. Updates are never
-installed automatically. The public GitHub repository has **not been created**;
-`dev update` will report that it is unconfigured until a trusted owner/repository
-is explicitly registered with `dev update --set-repo OWNER/REPO`. See
+installed automatically. The official public source repository is **GAUSST/gaston-agentic**;
+`dev update` remains unconfigured until the publisher is explicitly trusted once
+with `dev update --set-repo GAUSST/gaston-agentic`. See
 `docs/UPDATES.md` for release, integrity, testing, and rollback details.
 
 **Platform status:** the standard Unix `./dev` launcher works without pip,
