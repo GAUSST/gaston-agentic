@@ -1,6 +1,6 @@
 # Central Gaston engine — phased v1.6 migration
 
-**Current stage: packaged engine and opt-in core dispatch preview.** Do not treat this as a completed global-runtime migration.
+**Current stage: packaged engine, read-only core dispatch and opt-in source-free project bootstrap.** Do not treat this as a completed global-runtime migration.
 
 ## Ownership
 - Engine: centrally installed `gaston_engine` package (runtime, orchestration, hooks, verification, internal tests and policies), outside application repositories
@@ -16,7 +16,15 @@
 5. Preserve exactly `dev`, `dev init`, `dev models`, `dev sessions`, `dev uninstall`, `dev update`. Uninstall keeps context by default, offers independently confirmed full erase and removes only verified Gaston-owned assets.
 6. Test fresh installs, nested projects, path/symlink abuse, interrupted migration, rollback, provider hooks and local sessions on Windows/macOS/Linux (Python 3.11/3.13) before switching dispatch.
 
-## This PR implements
+## Minimal source-free project adapter (next stage)
+
+- Explicit `GASTON_ENGINE_MODE=central dev init` creates only `.gaston/project.json` in an **existing** project; it never copies engine source, internal tests, workflows or top-level provider instructions. Re-running init is idempotent and preserves context.
+- `GASTON_ENGINE_MODE=central dev --help` works in the newly initialized, source-free project via the centrally installed engine. No implicit project initialization occurs.
+- Unknown or linked adapter markers are rejected without overwriting data. Nested directories reuse the nearest existing project marker. Old `.agentic/local` context is left untouched.
+- This bootstrap **does not yet make central-mode models, sessions, agents, hooks, update or uninstall operational**. Real legacy-to-central migration must remain a separate explicit and reversible action.
+- All six CI platforms run dedicated bootstrap tests.
+
+## Earlier phases implement
 - Python wheel includes all core modules under `gaston_engine` next to the native `dev` executable, so engine code can live outside application repositories.
 - `project_layout` makes project versus engine path boundaries explicit, recognizes legacy and future central project markers and does not initialize projects implicitly.
 - New layout and packaging tests; CI verifies that installed wheels contain engine modules on all three systems.
