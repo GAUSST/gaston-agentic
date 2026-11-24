@@ -18,7 +18,7 @@
     ".agentic/evolution.py": "e55e7f8d11307c2e79fb5dd10052dea1ddbc8f5ab8b5e1bdf0c045e15ecb4727",
     ".agentic/hook_worker.py": "3bd46d027ceabc616f83ee749daa1d5ce95ee12c357301adcb6d3f0be5f75dce",
     ".agentic/host_setup.py": "ddfe7d39d5945d2af35802a4ef8c3247e073a0e11f2467e4314d60bc3f38de72",
-    ".agentic/launcher.py": "3e57f0d3e94bc092e001602c4d99bc101abdecd0c6f9bbe97523dcc92522f7fd",
+    ".agentic/launcher.py": "4751d4fa2e7ed9e3e4b9ec5da7ce6e892fbe8d211301c83b185b73443907a1a9",
     ".agentic/lead_git.py": "e5d9214648d0132d729263ea0bdc95cb0d54ded3989661bf76db488009267bb7",
     ".agentic/lead_workspace_ops.py": "86d63696554d5e4f2d200fb537fa63f039545d73e25ed14995009bfe3a31219c",
     ".agentic/learning_engine.py": "25dcca4beee1c1b90fd9d67d45ac29ccc35c8a8a90cdde37882d15205ebcffd7",
@@ -92,7 +92,7 @@
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "15bc681b7af988820a219d3bdede340f98fdbf7649b3605adc49488c39a33051",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "e9ca48d535b756bb2bf317d09da11c99b3fcd23c3a686d355dfc6b49c0c6c212",
+    "README.md": "b1ed6cef8833f8c9c9f62c013796117c1c8a8aba12882ce27f186c2b3353838f",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
@@ -109,8 +109,8 @@
     ".agentic/project_layout.py": "41744557b84f1ce26f28c2795b9ca083209104e0083ca8804f8c05490b342d8f",
     ".agentic/test_project_layout.py": "112815115d12d66de5833a4a2f73c8c0ada7adc99601cd323be7d79655f30edc",
     ".agentic/__init__.py": "580783cdb23f64de5579d7da91c6e6ff454d54be54d7dadf3eb5990f342e9e23",
-    "docs/CENTRAL_ENGINE_MIGRATION.md": "d864e9b4e392953ec76a01969ca0b7e532da6793c4a8bd90c6fcf7acdfc78358",
-    ".agentic/test_central_dispatch.py": "9da2857bc327797d33210dabeebd763fae68ec8f67cc254ad601975574afc0d6"
+    "docs/CENTRAL_ENGINE_MIGRATION.md": "6c77e0bfd4d0115a876d4f4e7aa4225c7e1c4d935fe22dff6a7d2c661fc2b61b",
+    ".agentic/test_central_dispatch.py": "8ae5ba73fb9afa150f41bc308bdd3ef026c98350ca7e795e1f5be4998db1b30e"
   },
   "build": "1.5.5"
 }

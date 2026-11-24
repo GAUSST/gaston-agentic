@@ -55,6 +55,18 @@ class CentralDispatchTests(unittest.TestCase):
                          'read-only preview must never create a legacy evolution lock')
         self.assertFalse((self.project / '.gaston').exists())
 
+    def test_pending_update_journal_rejects_read_only_preview(self):
+        state = self.project / '.agentic/local/update'
+        state.mkdir(parents=True)
+        pending = state / 'journal.json'
+        pending.write_text('{"backup":"opaque"}', encoding='utf-8')
+        result = self.cli('--help')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('Interrupted update detected', result.stderr)
+        self.assertEqual(pending.read_text(encoding='utf-8'),
+                         '{"backup":"opaque"}')
+        self.assertFalse((state / 'check.json').exists())
+
     def test_version_mismatch_fails_closed(self):
         self.manifest.write_text('{"build": "0.0.0", "files": {}}', encoding='utf-8')
         result = self.cli('--help')
