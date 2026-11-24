@@ -1,5 +1,6 @@
 """Sandbox-local compile-only Java preflight; never independent acceptance evidence."""
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import argparse
 import hashlib
 import json
@@ -51,7 +52,7 @@ def active_attempt(root):
     from orchestration import read_record
     tid=os.environ.get('GASTON_BUILDER_TASK_ID','');attempt=os.environ.get('GASTON_BUILDER_ATTEMPT','')
     if not re.fullmatch(r'[a-z0-9-]{8,120}',tid) or not re.fullmatch(r'[0-9a-f]{32}',attempt):return None
-    folder=Path(root)/'.agentic/runs'/tid
+    folder=project_state(root)/'runs'/tid
     if folder.is_symlink() or read_record(folder/'worker.json').get('attempt')!=attempt or read_record(folder/'state.json').get('stage')!='implementing':return None
     return folder,attempt
 
@@ -61,7 +62,7 @@ def material_fingerprint(root,project):
     # untracked source). No Git baseline means no trusted freshness claim.
     import workspace_git
     from orchestration import read_record
-    return workspace_git.fingerprint(root,read_record(Path(root)/'.agentic/config.json').get('project'))
+    return workspace_git.fingerprint(root,read_record(project_state(root)/'config.json').get('project'))
 
 
 def receipt_path(folder,attempt,project):
@@ -107,7 +108,7 @@ def main():
     parser.add_argument('project',help='discovered workspace-relative Java build root')
     parser.add_argument('--allow-network',action='store_true',
                         help='after an offline dependency-resolution block, retry once online; requires explicit Lead/developer authorization')
-    args=parser.parse_args();root=Path(__file__).resolve().parent.parent
+    args=parser.parse_args();root=project_root()
     active=active_attempt(root)
     if not active:
         print(json.dumps({'status':'blocked','reason':'Compile preflight is available inside the active delegated Builder attempt only.'}));return 1

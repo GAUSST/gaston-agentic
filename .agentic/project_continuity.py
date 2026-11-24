@@ -6,6 +6,7 @@ The registry is private workspace state, not part of the distributed toolkit.
 An optional structured roadmap format remains supported for prior installations.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name
 
 import hashlib
 import json
@@ -15,9 +16,9 @@ import re
 import tempfile
 
 RELATIVE_PATH = 'docs/PROJECT_ROADMAP.json'  # Optional pre-existing structured format.
-REGISTRY_PATH = '.agentic/local/project-context-sources.json'
+REGISTRY_PATH = project_state_name() + '/local/project-context-sources.json'
 _SUPPORTED = frozenset(('.md', '.txt', '.rst', '.json', '.yaml', '.yml'))
-_PROTECTED = frozenset(('.agentic', '.git', '.claude', '.serena', 'node_modules', '.venv', 'venv', 'dist', 'build'))
+_PROTECTED = frozenset(('.agentic', '.gaston', '.git', '.claude', '.serena', 'node_modules', '.venv', 'venv', 'dist', 'build'))
 _MAX_DOCUMENT = 256 * 1024
 _NEXT_NOTE = re.compile(r'(?i)\bcheckpoint\s*#?\s*(\d{1,3})\s+is\s+next\b')
 _NEXT_LABEL = re.compile(r'(?i)\bnext\s*(?:milestone|checkpoint)\s*[:=-]\s*(?:checkpoint\s*)?#?\s*(\d{1,3})\b')
@@ -69,7 +70,7 @@ def _read_text(root, rel):
 
 def _registry_file(root):
     root = Path(root).resolve()
-    folder = root / '.agentic/local'
+    folder = project_state(root) / 'local'
     if folder.is_symlink() or (folder.exists() and not folder.is_dir()):
         raise ValueError('Local context directory is not safe')
     path = folder / 'project-context-sources.json'
@@ -185,7 +186,7 @@ def _legacy_approved_sources(root):
     matching document can be safely recovered by its content, even if renamed.
     """
     from orchestration import read_record
-    checkpoint = read_record(Path(root) / '.agentic/local/lead-checkpoint.json')
+    checkpoint = read_record(project_state(root) / 'local/lead-checkpoint.json')
     fingerprint = checkpoint.get('roadmap_sha256')
     if not isinstance(fingerprint, str) or not re.fullmatch('[0-9a-f]{64}', fingerprint):
         return None

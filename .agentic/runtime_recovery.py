@@ -5,6 +5,7 @@ provider history. A repair incident is work for the enrolled Lead, not a new
 background model invocation.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 from contextlib import contextmanager
 import hashlib
 import os
@@ -22,7 +23,7 @@ def reconcile_tasks(root):
     root = Path(root).resolve()
     store = Store(root)
     outcomes = []
-    for folder in (root/'.agentic/runs').glob('*'):
+    for folder in (project_state(root)/'runs').glob('*'):
         if not folder.is_dir() or folder.is_symlink():
             continue
         task = orch.read_record(folder/'task.json')
@@ -66,7 +67,7 @@ def _legacy_feedback_worker_visible(root):
     proc = Path('/proc')
     if not proc.is_dir():
         return True
-    scripts = {root/'.agentic/hook_worker.py', root/'.agentic/eng.py'}
+    scripts = {runtime_script('hook_worker.py'), runtime_script('eng.py')} if central_mode() else {root/'.agentic/hook_worker.py', root/'.agentic/eng.py'}
     for entry in proc.iterdir():
         if not entry.name.isdigit() or int(entry.name) == os.getpid():
             continue
@@ -100,7 +101,7 @@ def feedback_worker_guard(root):
     """
     import fcntl
     root = Path(root).resolve()
-    local = root/'.agentic/local/native-hooks'
+    local = project_state(root)/'local/native-hooks'
     local.mkdir(parents=True, exist_ok=True)
     fd = os.open(local/'feedback-worker.lock', os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600)
     try:
@@ -135,7 +136,7 @@ def recover_feedback_items(root):
     Preserve the original JSON evidence in the blocked queue.
     """
     import orchestration as orch
-    local = Path(root)/'.agentic/local/native-hooks'
+    local = project_state(root)/'local/native-hooks'
     for item in (local/'queue').glob('*.processing'):
         if item.is_symlink() or not item.is_file():
             continue
@@ -149,7 +150,7 @@ def recover_feedback_items(root):
         item.unlink()
 
 def _store(root):
-    return Path(root)/'.agentic/local/runtime-incidents'
+    return project_state(root)/'local/runtime-incidents'
 
 
 def record_internal_error(root, operation, exc, *, task_id=None):
@@ -170,7 +171,7 @@ def record_internal_error(root, operation, exc, *, task_id=None):
     if not frames:
         return None
     # The build dimension permits a new incident after a genuine upgrade.
-    manifest = read_record(root/'.agentic/manifest.json')
+    manifest = read_record((runtime_manifest() if central_mode() else root/'.agentic/manifest.json'))
     signature = [manifest.get('build'), operation, type(exc).__name__, frames[-1]]
     key = 'incident-' + hashlib.sha256(json.dumps(signature).encode()).hexdigest()[:20]
     with mutation_guard(root):

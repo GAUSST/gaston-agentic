@@ -4,6 +4,7 @@ Read-only inspection needs no Builder. Local commits require the developer's
 explicit request and exact, individual file paths; no shell or remote Git verbs.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 
 import json
 import os
@@ -129,7 +130,7 @@ def inspect(root: Path, project: dict | None = None, *, repository: str | None =
         if task_id is not None:
             if not isinstance(task_id,str) or not re.fullmatch('[a-z0-9-]{8,120}',task_id):
                 raise ValueError('Invalid task ID')
-            folder = root / '.agentic' / 'runs' / task_id
+            folder = project_state(root) / 'runs' / task_id
             if folder.is_symlink() or not (folder / 'task.json').is_file():
                 raise ValueError('Unknown task')
             def _read(path: str) -> dict:

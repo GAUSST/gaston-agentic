@@ -4,6 +4,7 @@ A unit test pass is not an API/mobile/web acceptance pass. Each check must
 have real trusted runner output recorded by Gaston's restricted verifier.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 from pathlib import Path
 import json
 import time
@@ -48,7 +49,7 @@ def declared_review_documents(folder):
 
 def revision_fingerprint(folder: Path, *, review_only=False) -> str | None:
     """Bind evidence to actual task source/deletions, not just a running task ID."""
-    if folder.parent.name!='runs' or folder.parent.parent.name!='.agentic':return None
+    if folder.parent.name!='runs' or folder.parent.parent.name!=project_state_name():return None
     root=folder.parent.parent.parent.resolve()
     try:build=json.loads((folder/'build.json').read_text(encoding='utf8'))
     except (OSError,ValueError):return None
@@ -175,7 +176,7 @@ def current(folder: Path) -> list[dict]:
             try:
                 import workspace_git
                 root=folder.parent.parent.parent
-                project=task_runtime.read_record(root/'.agentic/config.json').get('project')
+                project=task_runtime.read_record(project_state(root)/'config.json').get('project')
                 workspace=workspace_git.fingerprint(root,project,review_documents=declared_review_documents(folder))
             except (OSError,ValueError,TypeError):pass
         if workspace and workspace==e['parameters']['workspace_fingerprint']:rows.append(e)

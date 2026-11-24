@@ -5,6 +5,7 @@ production credentials, arbitrary shell, or guessed application configuration.
 The launch process and all its children belong to this one invocation.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import json, os, re, shutil, signal, socket, subprocess, sys, tempfile, time
 from pathlib import Path
 import backend_runner
@@ -67,7 +68,7 @@ def _env(root,jdk):
     if not env.get('DOCKER_HOST') and os.name!='nt':
         rootless=Path(env.get('XDG_RUNTIME_DIR','/nonexistent'))/'docker.sock'
         env['DOCKER_HOST']='unix://'+str(rootless if rootless.is_socket() else Path('/var/run/docker.sock'))
-    cache=root/'.agentic/local/backend-dependencies';cache.mkdir(parents=True,exist_ok=True)
+    cache=project_state(root)/'local/backend-dependencies';cache.mkdir(parents=True,exist_ok=True)
     env.update(MAVEN_USER_HOME=str(cache/'maven-user'),CI='true',SPRING_PROFILES_ACTIVE='gaston-e2e',GASTON_E2E='true')
     if jdk:
         env['JAVA_HOME']=jdk['home'];env['PATH']=str(Path(jdk['home'])/'bin')+os.pathsep+env.get('PATH','')
@@ -103,7 +104,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240):
          '-Dspring-boot.run.main-class='+main,'-Dspring-boot.run.profiles=gaston-e2e',
          f'-Dspring-boot.run.arguments=--server.address=127.0.0.1 --server.port={port}',
          'test-compile','spring-boot:test-run']
-    local=root/'.agentic/local';local.mkdir(parents=True,exist_ok=True)
+    local=project_state(root)/'local';local.mkdir(parents=True,exist_ok=True)
     result={'status':'blocked','project':relative_path,'managed_application':False}
     proc=None
     # Private fixture logs may include test OTPs. Never send raw logs through MCP.

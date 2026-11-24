@@ -1,5 +1,6 @@
 """Risk-based post-edit plan with enforceable, project-specific acceptance gates."""
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 from pathlib import Path
 import verification_planner
 import workspace_checks
@@ -56,7 +57,7 @@ def produce(root: Path, task: dict, build: dict, cfg: dict) -> dict:
         if name.startswith('backend_verify'):continue
         if name.startswith('api_integration') and managed:continue
         if name.startswith(('web_e2e','mobile_e2e','flutter_tests','flutter_analyze')):
-            if cwd.startswith('.agentic/'):continue # a harness smoke is not an app
+            if (cwd.startswith('.agentic/') or cwd.startswith('.gaston/')):continue # a harness smoke is not an app
             add(name,cwd,step.get('command'))
         elif name in explicit_checks:
             add(name,cwd,step.get('command'))

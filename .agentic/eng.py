@@ -37,14 +37,15 @@ import token_intelligence as ti
 import serena_tools
 from native_hooks import install_native_hooks, installed as native_hooks_installed, LOCAL as HOOK_LOCAL, session_active
 
-from project_layout import project_root
+from project_layout import project_root, project_state, project_state_name, runtime_script
 ROOT = project_root()
-CFG_FILE = ROOT / '.agentic' / 'config.json'
-RUNS = ROOT / '.agentic' / 'runs'
-TASKS = ROOT / '.agentic' / 'tasks'
+STATE = project_state(ROOT)
+CFG_FILE = STATE / 'config.json'
+RUNS = STATE / 'runs'
+TASKS = STATE / 'tasks'
 ACTIVE_RUN = None
 SESSIONS = Store(ROOT)
-LOCAL = ROOT / '.agentic' / 'local'
+LOCAL = STATE / 'local'
 HANDOFFS = LOCAL / 'handoffs'
 FEEDBACK_SCHEMA = {
   'type':'object', 'additionalProperties':False,
@@ -305,9 +306,23 @@ def format_stream_line(line: str, *, ai: bool):
     return None
 
 
+def _central_prompt_paths(text: str) -> str:
+    if project_state_name() != '.gaston':
+        return text
+    return (text.replace('python .agentic/builder_compile.py',
+                         sys.executable + ' ' + str(runtime_script('builder_compile.py')))
+                .replace('.agentic/local/', '.gaston/local/')
+                .replace('.agentic/config.json', '.gaston/config.json')
+                .replace('.agentic/policies/custom/', '.gaston/policies/custom/'))
+
+
 def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
                 timeout: int = 1800, cwd: Path = ROOT, ai: bool = False, env: dict | None = None):
     """Stream progress, preserve separate stdout/stderr for structured CLI JSON."""
+    if project_state_name() == '.gaston':
+        argv = [_central_prompt_paths(x) if isinstance(x, str) else x for x in argv]
+        if isinstance(stdin, str):
+            stdin = _central_prompt_paths(stdin)
     output.parent.mkdir(parents=True, exist_ok=True)
     print('  Executing:', argv[0], argv[1] if len(argv) > 1 else '', flush=True)
     started = time.monotonic()
@@ -462,7 +477,7 @@ def lead_verification_mcp_config(*, include_maestro=False) -> Path:
     from task_runtime import MCP_TOOL_TIMEOUT_SECONDS
     servers={'gaston_verify':{'type':'stdio','command':sys.executable,
               'timeout':MCP_TOOL_TIMEOUT_SECONDS * 1000,
-              'args':[str(ROOT/'.agentic/verification_mcp.py')],
+              'args':[str(runtime_script('verification_mcp.py'))],
               'env':{'GASTON_LEAD_TOKEN':token,'GASTON_SESSION_LEASE':lease,'GASTON_LEAD_PROVIDER':next((p for p in ('claude','codex') if SESSIONS._held_leases.get(lease)==(p,'reviewer')), 'claude')}}}
     # The default Playwright MCP selects system Chrome, which may crash on
     # mismatched GNOME settings. Prefer the Playwright-managed Chromium already
@@ -496,6 +511,9 @@ def lead_verification_mcp_config(*, include_maestro=False) -> Path:
             servers['maestro']={'type':'stdio','command':maestro,'args':['mcp']}
     semantic=serena_tools.config(ROOT,'claude')
     if semantic:servers['gaston_serena']=semantic
+    if project_state_name() == '.gaston':
+        servers['gaston_verify']['env'].update({
+            'GASTON_ENGINE_MODE':'central', 'GASTON_ENGINE_PROJECT':str(ROOT)})
     target=LOCAL/'lead-verification.mcp.json'
     write_json(target,{'mcpServers':servers})
     return target
@@ -1140,10 +1158,10 @@ def verification_plan(cfg: dict, task: dict) -> dict:
     if (browser_step and not cfg.get('project',{}).get('discovered_roots',{}).get('web')
             and not any(s.get('name') == 'web_e2e' for s in steps)):
         steps.append(browser_step)
-    spec = ROOT / '.agentic' / 'local' / 'api-checks.json'
+    spec = LOCAL / 'api-checks.json'
     if spec.is_file() and not any(s.get('name') == 'api_integration' for s in steps):
         steps.append({'name':'api_integration', 'cwd':'.',
-                      'command':[sys.executable,'.agentic/api_checks.py', '.agentic/local/api-checks.json'],
+                      'command':[sys.executable,str(runtime_script('api_checks.py')), str(LOCAL/'api-checks.json')],
                       'timeout_seconds':180})
     active = []
     for step in steps:
@@ -1518,7 +1536,7 @@ def manage_rules(operation: str, target: str | None = None, *, replace: bool = F
     enabled = cfg.get('policy_files', DEFAULT_POLICIES.copy())
     if operation == 'list':
         print('POLICIES (enabled = consulted by both agents)')
-        for path in sorted((ROOT/'.agentic/policies').rglob('*.md')):
+        for path in sorted((STATE/'policies').rglob('*.md')):
             rel = path.relative_to(ROOT).as_posix()
             print('  [x]' if rel in enabled else '  [ ]', rel)
         return
@@ -1527,7 +1545,7 @@ def manage_rules(operation: str, target: str | None = None, *, replace: bool = F
         source = Path(target).expanduser().resolve()
         if not source.is_file() or source.suffix.lower() not in ('.md','.txt'):
             fail('Policy must be a readable Markdown or text file')
-        dest = ROOT / '.agentic/policies/custom' / (source.stem + '.md')
+        dest = STATE / 'policies/custom' / (source.stem + '.md')
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists() and not replace: fail(f'Already exists: {dest}; pass --replace to overwrite')
         dest.write_text(source.read_text(encoding='utf-8'), encoding='utf-8')
@@ -1536,7 +1554,7 @@ def manage_rules(operation: str, target: str | None = None, *, replace: bool = F
         print('  Added and enabled:', rel)
     else:
         try:
-            rel = next(p.relative_to(ROOT).as_posix() for p in (ROOT/'.agentic/policies').rglob('*.md')
+            rel = next(p.relative_to(ROOT).as_posix() for p in (STATE/'policies').rglob('*.md')
                        if p.stem == target or p.relative_to(ROOT).as_posix() == target)
         except StopIteration: fail(f'No such policy: {target}')
         if operation == 'enable':
@@ -1785,7 +1803,7 @@ def perform_auto_fix(handoff, stub):
     handoff['status']='fixing'
     write_json(stub.with_suffix('.json'),handoff)
     print(f'  {builder} implementation → tests → independent {reviewer} session review',flush=True)
-    cmd=[sys.executable,str(ROOT/'.agentic/pipeline_worker.py'),
+    cmd=[sys.executable,str(runtime_script('pipeline_worker.py')),
          task_id,builder,reviewer]
     result=subprocess.run(cmd,cwd=ROOT,check=False)
     state_file=run_dir(task_id)/'state.json'
@@ -2256,7 +2274,7 @@ def run_automated_task(task_id: str, *, builder: str, reviewer: str) -> None:
 
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """Preserve the five established commands; `dev update` is dispatched by the launcher."""
     parser=argparse.ArgumentParser(
         description='Gaston Agentic — dev opens the Engineering Lead; tools run through the agents.',
@@ -2269,7 +2287,7 @@ def main() -> None:
     sub.add_parser('sessions',help='View enrolled sessions and recent activity')
     sub.add_parser('models',help='Interactively choose model, effort and Claude Advisor')
     sub.add_parser('uninstall',help='Remove Gaston Agentic from this workspace')
-    args=parser.parse_args()
+    args=parser.parse_args(argv)
     if args.command=='init':
         ready=setup_project(args.non_interactive,args.yes,args.lang)
         if ready is False: raise SystemExit(2)

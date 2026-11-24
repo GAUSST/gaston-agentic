@@ -5,6 +5,7 @@ Snapshot it on both sides of a provider invocation under its role lease.
 Only count a verified delta; unknown/missing telemetry stays unknown.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import json
 import os
 from pathlib import Path
@@ -149,7 +150,7 @@ def builder_rotation(root, provider, existing, task_id, *, current=None):
     """
     if not existing:return 'new_session'
     from task_runtime import read_record
-    binding=read_record(Path(root)/'.agentic/local'/f'builder-context-{provider}.json')
+    binding=read_record(project_state(root)/'local'/f'builder-context-{provider}.json')
     if binding.get('session_id')!=existing['id'] or binding.get('task_id')!=task_id:
         return 'new_task'
     if current is not None and (current.get('last_context_tokens') or 0)>=BUILDER_CONTEXT_ROTATE:
@@ -160,7 +161,7 @@ def builder_rotation(root, provider, existing, task_id, *, current=None):
 def begin_builder(store, root, provider, existing, path, *, role):
     """Called inside the provider's role lock. Limit changes to live tasks."""
     path=Path(path); root=Path(root)
-    try: relative=path.resolve().relative_to((root/'.agentic/runs').resolve())
+    try: relative=path.resolve().relative_to((project_state(root)/'runs').resolve())
     except ValueError: return existing, None, None
     if role!='builder' or len(relative.parts)!=2 or not path.name.startswith('build'):return existing,None,None
     before=snapshot(provider,existing['id']) if existing else None
@@ -189,7 +190,7 @@ def finish_builder(root, provider, sid, path, before, decision, *, returncode=No
     measured=delta(before,after,new_session=decision!='same_task')
     orchestration.put(Path(path).with_suffix('.usage.json'),{'provider':provider,'session_id':sid,'rotation':decision,'returncode':returncode,'recorded_at':time.time(),'usage':measured,'source':'native_counter_delta' if measured else 'unavailable'})
     if not sid:return
-    orchestration.put(Path(root)/'.agentic/local'/f'builder-context-{provider}.json',{'session_id':sid,'task_id':Path(path).parent.name,'last_context_tokens':after.get('last_context_tokens') if after else None,'recorded_at':time.time()})
+    orchestration.put(project_state(root)/'local'/f'builder-context-{provider}.json',{'session_id':sid,'task_id':Path(path).parent.name,'last_context_tokens':after.get('last_context_tokens') if after else None,'recorded_at':time.time()})
 
 
 def lead_context(root, provider, sid):
@@ -223,7 +224,7 @@ def _rotation_blockers(root):
     """Don't interrupt an in-flight worker or provider-native scheduled recovery."""
     from task_runtime import read_record,RUNNING
     blockers=[]
-    for folder in (Path(root)/'.agentic/runs').glob('*'):
+    for folder in (project_state(root)/'runs').glob('*'):
         if not folder.is_dir() or folder.is_symlink():continue
         st=read_record(folder/'state.json'); recovery=read_record(folder/'quota-recovery.json')
         if st.get('stage') in RUNNING or st.get('stage')=='lead_implementing':blockers.append(folder.name)
@@ -240,7 +241,7 @@ def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task
         if not isinstance(value,list) or len(value)>30 or not all(isinstance(v,str) and 0<len(v)<=1200 for v in value):raise ValueError('Invalid '+label)
     if type(safe_to_rotate) is not bool:raise ValueError('Specify whether all material user intent has been preserved and it is safe to rotate after closing')
     for tid in task_ids:
-        if not re.fullmatch(r'[a-z0-9-]{8,120}',tid) or not (root/'.agentic/runs'/tid/'task.json').is_file():raise ValueError('Unknown task ID: '+tid)
+        if not re.fullmatch(r'[a-z0-9-]{8,120}',tid) or not (project_state(root)/'runs'/tid/'task.json').is_file():raise ValueError('Unknown task ID: '+tid)
     for pid in plan_ids:
         if not plan_file(root,pid).is_file():raise ValueError('Unknown plan ID: '+pid)
     import project_continuity as continuity

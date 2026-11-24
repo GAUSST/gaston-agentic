@@ -5,6 +5,7 @@ Installs testing tools only after one explicit category-level approval.
 Existing fully configured testing categories are detected and skipped.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 import json
 import os
 from pathlib import Path
@@ -490,7 +491,7 @@ def installed_java_major():
 # Search project roots, not dependencies, generated outputs or tool configuration.
 # A finite depth and directory budget keep setup responsive in large workspaces.
 SKIP_SCAN_DIRS = {
-    '.git', '.agentic', '.agents', '.claude', '.dart_tool', '.gradle',
+    '.git', '.agentic', '.gaston', '.agents', '.claude', '.dart_tool', '.gradle',
     '.idea', '.vscode', '.venv', 'venv', 'node_modules', 'build',
     'target', 'out', 'dist', 'coverage', 'vendor', 'Pods', 'DerivedData',
     '__pycache__', 'examples', 'example', 'test', 'tests', '.next', '.pub-cache',

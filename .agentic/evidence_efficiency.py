@@ -5,6 +5,7 @@ backend passes with identical workspace and toolchain/environment fingerprints.
 Managed HTTP and integrated checkpoint checks are deliberately never shared.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 
 import hashlib
 import json
@@ -58,7 +59,7 @@ def environment_fingerprint(root: Path, project: str) -> str | None:
                'SPRING_DATASOURCE_PASSWORD','DATABASE_URL','DB_HOST','DB_PORT','DB_NAME',
                'PGHOST','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','DOCKER_HOST',
                'TESTCONTAINERS_HOST_OVERRIDE','CI','TZ')
-    cache = root/'.agentic/local/backend-dependencies'
+    cache = project_state(root)/'local/backend-dependencies'
     docker_context=None
     build_files = [directory/x for x in ('pom.xml','build.gradle','build.gradle.kts')]
     uses_testcontainers=False
@@ -126,7 +127,7 @@ def matching_backend_evidence(root:Path, target_folder:Path, project:str, select
     if not workspace_digest or not environment_digest:return None
     from acceptance_audit import read
     from task_runtime import read_record
-    root=Path(root).resolve(); now=time.time(); runs=root/'.agentic/runs'
+    root=Path(root).resolve(); now=time.time(); runs=project_state(root)/'runs'
     if not runs.is_dir() or target_folder.parent != runs:return None
     task=read_record(target_folder/'task.json')
     if task.get('checkpoint_acceptance'):return None
@@ -188,7 +189,7 @@ def record_tool_telemetry(root:Path, name:str, task_id:str|None, duration_second
         import time
         if not isinstance(name,str) or not re.fullmatch(r'[a-z][a-z0-9_]{1,80}',name):return
         if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):task_id=None
-        local=Path(root)/'.agentic/local';local.mkdir(parents=True,exist_ok=True,mode=0o700)
+        local=project_state(root)/'local';local.mkdir(parents=True,exist_ok=True,mode=0o700)
         row={'time':int(time.time()),'tool':name,'task_id':task_id,
              'duration_ms':max(0,int(1000*duration_seconds)),
              'output_bytes':len(json.dumps(output,ensure_ascii=False).encode('utf-8')),

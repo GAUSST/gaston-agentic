@@ -25,6 +25,13 @@ def main(argv: list[str] | None = None, *, system: str | None = None) -> int:
         print('Gaston requires Python 3.10 or newer.', file=sys.stderr)
         return 2
     arguments = list(sys.argv[1:] if argv is None else argv)
+    if os.environ.get('GASTON_ENGINE_MODE') == 'central':
+        if arguments and arguments[0] == 'update':
+            from gaston_engine.central_update import main as central_update
+            return central_update(arguments[1:])
+        from gaston_engine.eng import main as installed_engine
+        installed_engine(arguments)
+        return 0
     target = platform.system() if system is None else system
     if target in ('Linux', 'Darwin', 'Windows'):
         from host_setup import refresh_tool_path

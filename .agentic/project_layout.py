@@ -13,6 +13,18 @@ LEGACY_MARKER = Path('.agentic/launcher.py')
 def project_root(fallback: Path | None = None) -> Path:
     """Workspace root may differ from the installed engine's source directory."""
     supplied = os.environ.get('GASTON_ENGINE_PROJECT')
+    if not supplied and os.environ.get('GASTON_ENGINE_MODE') == 'central':
+        # Standalone installed provider hooks may be started without the
+        # parent CLI environment. Discover, but never initialize, a project.
+        here = Path.cwd().resolve()
+        try:
+            found, kind = find_project(here)
+            if kind == 'central':
+                read_project_marker(found)
+                supplied = str(found)
+                os.environ['GASTON_ENGINE_PROJECT'] = supplied
+        except ValueError:
+            pass
     if supplied:
         path = Path(supplied)
         if not path.is_absolute() or not path.is_dir():
@@ -97,6 +109,15 @@ def initialize_project(start: Path, *, engine_version: str) -> tuple[Path, bool]
     marker = directory / 'project.json'
     if marker.is_symlink() or marker.exists():
         raise ValueError('Refusing to overwrite existing Gaston project marker')
+    # Prevent session tokens, model logs and run evidence from accidentally
+    # entering the application's Git history. Context documents remain opt-in
+    # version controlled by their owner.
+    private_ignore = directory / '.gitignore'
+    if private_ignore.is_symlink():
+        raise ValueError('Refusing linked Gaston ignore policy')
+    if not private_ignore.exists():
+        with private_ignore.open('x', encoding='utf-8') as handle:
+            handle.write('local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\n')
     payload = {
         'schema': 1,
         'kind': PROJECT_MARKER_KIND,
@@ -110,3 +131,31 @@ def initialize_project(start: Path, *, engine_version: str) -> tuple[Path, bool]
         handle.flush()
         os.fsync(handle.fileno())
     return root, True
+
+
+def central_mode() -> bool:
+    """The installed CLI explicitly selects the centrally managed engine."""
+    return os.environ.get('GASTON_ENGINE_MODE') == 'central'
+
+
+def project_state(root: Path) -> Path:
+    """Keep user context in the project, never alongside installed runtime code."""
+    return Path(root).resolve() / ('.gaston' if central_mode() else '.agentic')
+
+
+def project_state_name() -> str:
+    return '.gaston' if central_mode() else '.agentic'
+
+
+def runtime_script(filename: str) -> Path:
+    """Only execute known modules from the installed engine package."""
+    if not isinstance(filename, str) or not filename.endswith('.py') or not filename[:-3].isidentifier() or filename.startswith('_'):
+        raise ValueError('Expected a simple public engine module filename')
+    path = Path(__file__).resolve().parent / filename
+    if not path.is_file():
+        raise FileNotFoundError('Missing installed Gaston module: ' + filename)
+    return path
+
+
+def runtime_manifest() -> Path:
+    return Path(__file__).resolve().parent / 'manifest.json'
