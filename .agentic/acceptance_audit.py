@@ -12,7 +12,7 @@ import secrets
 import hashlib
 
 GATE_TYPES={'backend':'backend_verify','api':'api_integration',
-            'web':'web_e2e','mobile':'mobile_e2e','flutter_tests':'flutter_tests','flutter_analyze':'flutter_analyze'}
+            'web':'web_e2e','web_verify':'web_verify','mobile':'mobile_e2e','flutter_tests':'flutter_tests','flutter_analyze':'flutter_analyze'}
 
 
 def read(folder: Path) -> list[dict]:

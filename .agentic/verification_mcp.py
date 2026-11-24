@@ -74,8 +74,8 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
     {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Call this MCP tool directly; the native client may manage its own background execution. Never create a Bash watcher, sleep loop or background shell. Do not end with a progress-only response instead of this call. Does not start tests or repair.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
-    {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
-     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
+    {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=web_verify executes selected project unit/typecheck/lint/build scripts for scoped web slices; kind=web executes real browser acceptance with isolated startup. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
+     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','web_verify','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
     {'name':'task_acceptance_report','description':'Compare real recorded backend/API/web/mobile checks against the task risk-based plan; expose missing checks and any untested cross-component paths.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
     {'name':'task_verification_plan','description':'Prepare a risk-based test plan from actual Builder changed files, discovered project test gates, and cross-component impacts. Reports missing coverage; does not run or pass tests.',
@@ -90,7 +90,7 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{},'additionalProperties':False}},
     {'name':'run_web_smoke','description':'Run an isolated temporary Playwright counter test; default headless. Set visible=true to show a dedicated browser window for observation on a graphical desktop; clean up temporary fixtures.',
      'inputSchema':{'type':'object','properties':{'visible':{'type':'boolean','description':'Show a dedicated isolated Chromium window for visual debugging (default false). Requires a desktop display.'}},'additionalProperties':False}},
-    {'name':'run_project_web_tests','description':'Execute existing Playwright tests only against a loopback test URL; never create or edit application tests.',
+    {'name':'run_project_web_tests','description':'Execute existing Playwright tests using native webServer or an isolated project-owned backend launcher, with an explicit loopback external URL as fallback. Never create or edit application tests.',
      'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Web project relative path; required if multiple valid web apps exist'}},'additionalProperties':False}},
     {'name':'start_existing_emulator','description':'Start an already installed Android AVD (not a physical device). Does not install system packages.',
      'inputSchema':{'type':'object','properties':{'name':{'type':'string','description':'Exact name returned by environment_status. Optional when just one AVD exists.'}},'additionalProperties':False}},
@@ -286,35 +286,19 @@ def run_web_smoke(visible=False):
 
 
 def run_project_web_tests(project=None):
-    """Run an actual app's Playwright specs, never the Gaston smoke harness."""
+    """Run the selected app's real Playwright specs with a managed lifecycle."""
     import workspace_checks
-    from urllib.parse import urlparse
-    url=os.environ.get('PLAYWRIGHT_BASE_URL','')
-    parsed=urlparse(url)
-    if parsed.scheme not in ('http','https') or parsed.hostname not in ('127.0.0.1','localhost','::1'):
-        return response('blocked',reason='Set PLAYWRIGHT_BASE_URL to a running loopback test application')
+    import web_acceptance
     candidates=[]
     for rel in workspace_checks.web_projects(ROOT):
         candidate=(ROOT/rel).resolve()
-        if not candidate.is_relative_to(ROOT) or not candidate.is_dir():continue
-        if not any((candidate/c).is_file() for c in workspace_checks.CONFIGS):continue
-        if not workspace_checks._test_files(candidate):continue
-        runner=candidate/'node_modules/@playwright/test/cli.js'
-        if runner.is_file():candidates.append((rel,candidate,runner))
-    if project is not None:
-        if not isinstance(project,str) or Path(project).is_absolute() or '..' in Path(project).parts:
-            return response('blocked',reason='Web project path must be workspace-relative')
-        candidates=[item for item in candidates if item[0]==project]
-    if len(candidates)!=1:
-        return response('blocked',reason='Select exactly one app with real Playwright specs and an installed local runner',
-                        projects=[item[0] for item in candidates])
-    rel,folder,runner=candidates[0]
-    if not shutil.which('node'):return response('blocked',reason='Node.js not installed')
-    env=os.environ.copy();env['GSETTINGS_BACKEND']='memory';env['CI']='1'
-    result=execute(['node',str(runner),'test'],cwd=folder,env=env,timeout=600)
-    return response('pass' if result['exit_code']==0 else 'blocked' if result['exit_code'] is None else 'fail',
-                    project=rel,evidence=result,
-                    note='Existing application Playwright specs executed, not the Gaston counter fixture')
+        if candidate.is_relative_to(ROOT) and any((candidate/c).is_file() for c in workspace_checks.CONFIGS) and workspace_checks._test_files(candidate):
+            candidates.append(rel)
+    if project is None and len(candidates)==1:project=candidates[0]
+    if project not in candidates:
+        return response('blocked',reason='Select exactly one app with real Playwright specs',projects=candidates)
+    return web_acceptance.run_browser(ROOT,project,execute=execute,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'))
+
 
 
 def run_backend_tests(project=None, goal='test', test_filter=None, offline=False):
@@ -1377,6 +1361,9 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
             import managed_backend
             result=managed_backend.run(ROOT,project)
     elif kind=='web':result=run_project_web_tests(project)
+    elif kind=='web_verify':
+        import web_acceptance
+        result=web_acceptance.run_local(ROOT,project,execute=execute)
     elif kind in ('flutter_tests','flutter_analyze'):
         import workspace_checks
         _,discovered=workspace_checks.discover(ROOT,{})
@@ -1652,7 +1639,7 @@ def review_work_slice(args):
     # Require real relevant tool evidence for each touched component. For a backend
     # slice the targeted JUnit check may precede later full HTTP checkpoint checks.
     checks=plan.get('selected_checks',[])
-    needed={(c.get('cwd','.'),str(c.get('name','')).split('__')[0]) for c in checks if str(c.get('name','')).split('__')[0] in ('backend_verify','flutter_tests','flutter_analyze','web_e2e','mobile_e2e')}
+    needed={(c.get('cwd','.'),str(c.get('name','')).split('__')[0]) for c in checks if str(c.get('name','')).split('__')[0] in ('backend_verify','flutter_tests','flutter_analyze','web_e2e','web_verify','mobile_e2e')}
     latest={}
     for e in evidence:
         target=(e.get('parameters') or {}).get('project') or (e.get('evidence') or {}).get('project') or '.'
