@@ -5,6 +5,7 @@ A repository-local ``./dev`` shell shim remains available on Unix.
 """
 from __future__ import annotations
 
+import os
 import platform
 import sys
 from pathlib import Path
@@ -28,17 +29,27 @@ def main(argv: list[str] | None = None, *, system: str | None = None) -> int:
     if target in ('Linux', 'Darwin', 'Windows'):
         from host_setup import refresh_tool_path
         import updater
-        # Fail closed if an interrupted update cannot be recovered safely.
-        updater.recover(ROOT)
+        # Central --help preview is read-only. recover() creates
+        # .agentic/local/update even if there is nothing to recover.
+        # An interrupted update instead blocks the preview until the
+        # ordinary legacy launcher can safely restore its transaction.
+        preview = os.environ.get('GASTON_ENGINE_MODE') == 'central'
+        if preview:
+            journal = ROOT / '.agentic/local/update/journal.json'
+            if journal.is_symlink() or journal.exists():
+                raise RuntimeError('Interrupted update detected; use legacy mode to recover before central preview')
+        else:
+            updater.recover(ROOT)
         if arguments and arguments[0] == 'update':
             return updater.main(ROOT, arguments[1:])
         from evolution import launch
         if not arguments:
             updater.notice(ROOT)
-        if target == 'Windows':
+        if target == 'Windows' and not preview:
             from platform_compat import protect_workspace_local
             protect_workspace_local(ROOT)
-        refresh_tool_path()
+        if not preview:
+            refresh_tool_path()
         launch(ROOT, arguments)
         return 0
     print(f'Gaston does not support {target}. Use Ubuntu, macOS or Windows.',

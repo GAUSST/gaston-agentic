@@ -530,8 +530,21 @@ def launch(root,args):
     Windows cannot execv while retaining an inherited shared lock; the
     launcher holds that kernel lock while waiting on its child CLI instead.
     """
-    from platform_compat import open_lock, lock_fd, unlock_fd
     root=Path(root).resolve()
+    if os.environ.get('GASTON_ENGINE_MODE') == 'central':
+        # Read-only preview: do not open or create workspace evolution locks.
+        # On Windows, opening the legacy lock can fail with PermissionError
+        # even when no tool update is requested. There is no evolution to
+        # coordinate for --help; run the centrally packaged entrypoint only.
+        if list(args) != ['--help']:
+            raise RuntimeError('Central preview supports dev --help only')
+        completed = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / 'eng.py'), '--help'],
+            cwd=root, check=False)
+        if completed.returncode:
+            raise SystemExit(completed.returncode)
+        return
+    from platform_compat import open_lock, lock_fd, unlock_fd
     path=safe(root,'.agentic/local/evolution-launch.lock')
     fd=open_lock(path)
     try:

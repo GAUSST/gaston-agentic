@@ -1,6 +1,6 @@
 # Central Gaston engine — phased v1.6 migration
 
-**Current stage: package and path foundation only.** Do not treat this as a completed global-runtime migration.
+**Current stage: packaged engine and opt-in core dispatch preview.** Do not treat this as a completed global-runtime migration.
 
 ## Ownership
 - Engine: centrally installed `gaston_engine` package (runtime, orchestration, hooks, verification, internal tests and policies), outside application repositories
@@ -20,6 +20,7 @@
 - Python wheel includes all core modules under `gaston_engine` next to the native `dev` executable, so engine code can live outside application repositories.
 - `project_layout` makes project versus engine path boundaries explicit, recognizes legacy and future central project markers and does not initialize projects implicitly.
 - New layout and packaging tests; CI verifies that installed wheels contain engine modules on all three systems.
-- Existing CLI still loads the workspace-local engine by design. No automatic migration, no new user-facing setup behavior, no forced engine upgrade.
+- The installed CLI retains legacy dispatch by default. For matching-version existing workspaces only, `GASTON_ENGINE_MODE=central dev --help` executes the installed launcher and `eng.py` instead of the project's copies. **Only `--help` is allowed in central preview**; all stateful operations are refused. The read-only preview bypasses workspace evolution locks and the updater's write-producing recovery-store initialization. It refuses to run when an interrupted-update journal exists, leaving recovery to the legacy dispatcher. It refuses uninitialized projects and does not trigger local evolution.
+- The Linux full-suite test now locates the actual installed engine package instead of reading source-relative `.egg-info` file lists, which incorrectly failed PR #6's post-merge CI.
 
-**Do not manually delete `.agentic` or tag v1.6 until remaining gates pass.**
+**Do not manually delete `.agentic` or tag v1.6 until remaining gates pass.** The core execution preview does not yet repoint sidecar scripts, hooks, provider integrations, central updates or project state; it must not be used as evidence that source-free projects are functional.
