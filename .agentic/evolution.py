@@ -535,7 +535,7 @@ def launch(root,args):
     path=safe(root,'.agentic/local/evolution-launch.lock')
     fd=open_lock(path)
     try:
-        if not args:
+        if not args and os.environ.get('GASTON_ENGINE_MODE') != 'central':
             try:
                 lock_fd(fd,nonblocking=True)
             except BlockingIOError:
@@ -568,7 +568,12 @@ def launch(root,args):
         try:
             if (store(root)/'journal.json').exists():
                 raise RuntimeError('Interrupted evolution requires recovery. Close managed sessions and restart dev.')
-            command=[sys.executable,str(root/'.agentic/eng.py'),*args]
+            # Central preview executes installed core code, never a project-supplied
+            # .agentic/eng.py. Sidecar/hooks migration remains a separate gate.
+            executable = (Path(__file__).resolve().parent / 'eng.py'
+                          if os.environ.get('GASTON_ENGINE_MODE') == 'central'
+                          else root / '.agentic/eng.py')
+            command=[sys.executable,str(executable),*args]
             if os.name=='nt':
                 completed=subprocess.run(command,cwd=root)
                 if completed.returncode:

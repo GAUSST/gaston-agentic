@@ -23,6 +23,14 @@ jobs:
         run: python -c "import gaston_engine; from pathlib import Path; p=Path(gaston_engine.__file__).resolve().parent; assert (p/'eng.py').is_file(); assert (p/'native_hooks.py').is_file(); assert p != Path.cwd()/'.agentic'"
       - name: CLI executable from PATH
         run: dev --help
+      - name: Installed core dispatcher smoke (opt-in)
+        run: dev --help
+        env:
+          GASTON_ENGINE_MODE: central
+      - name: Central dispatcher regression
+        run: python -m unittest discover -s .agentic -p 'test_central_dispatch.py' -v
+        env:
+          PYTHONPATH: .agentic
       - name: Native locking and dispatcher tests
         run: python -m unittest discover -s .agentic -p 'test_launcher.py' -v
         env:
