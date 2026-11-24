@@ -79,7 +79,7 @@ def _stop(proc):
     from platform_compat import stop_owned
     stop_owned(proc, isolated_group=True, grace_seconds=10)
 
-def run(root,relative_path,*,startup_timeout=180,suite_timeout=240):
+def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check=None):
     root=Path(root).resolve()
     try:
         if not isinstance(relative_path,str) or Path(relative_path).is_absolute() or '..' in Path(relative_path).parts:raise ValueError('Choose a workspace-relative Maven project')
@@ -120,6 +120,11 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240):
                     time.sleep(.5)
                 if not ready:
                     result.update(reason='Application did not become HTTP-ready; inspect test launcher, profile, migrations and database',startup_exit_code=proc.poll())
+                elif browser_check is not None:
+                    # Fresh isolated application; do not consume one-time setup
+                    # tokens with the API scenarios before the browser suite.
+                    browser=browser_check(base)
+                    result.update(status=browser['status'],managed_application=True,readiness_http_status=ready_status,browser=browser)
                 else:
                     checked=subprocess.run([sys.executable,str(Path(__file__).with_name('api_checks.py')),str(suite)],cwd=project,env=env,capture_output=True,text=True,timeout=suite_timeout)
                     result.update(status='pass' if checked.returncode==0 else 'blocked' if checked.returncode==2 else 'fail',managed_application=True,readiness_http_status=ready_status,exit_code=checked.returncode,summary=checked.stdout[-8000:],suite=suite.relative_to(project).as_posix())

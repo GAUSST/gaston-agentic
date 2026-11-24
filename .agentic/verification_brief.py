@@ -49,6 +49,15 @@ def produce(root: Path, task: dict, build: dict, cfg: dict) -> dict:
                 import managed_backend
                 managed_backend.descriptor(root/rel)
             except (OSError,ValueError,AttributeError,TypeError):missing.add(gate)
+    slice_only=bool(task.get('work_plan_id') and not task.get('checkpoint_acceptance'))
+    web_roots=projects.get('web',[])
+    all_roots=set(rel for group in projects.values() for rel in group)
+    def owns(path,rel):
+        return in_project(path,rel) and not any(other!=rel and in_project(other,rel) and in_project(path,other) for other in all_roots)
+    affected_web={rel for rel in web_roots if any(owns(p,rel) for p in paths)}
+    affected_java=any(any(owns(p,rel) for p in paths) for rel in java)
+    direct_web=affected_web or (set(web_roots) if 'web' in explicit and not paths else set())
+    browser_required=set(explicit_checks)
     # Real client changes demand actual client checks. Backend changes alone
     # do not demand nonexistent mobile/web projects. Existing connected tests
     # are included when they are selected by the risk planner.
@@ -56,13 +65,23 @@ def produce(root: Path, task: dict, build: dict, cfg: dict) -> dict:
         name=step['name'];cwd=step.get('cwd','.')
         if name.startswith('backend_verify'):continue
         if name.startswith('api_integration') and managed:continue
+        if name.startswith('web_e2e') and name not in browser_required:
+            if slice_only or (direct_web and cwd not in direct_web and not affected_java):continue
         if name.startswith(('web_e2e','mobile_e2e','flutter_tests','flutter_analyze')):
             if (cwd.startswith('.agentic/') or cwd.startswith('.gaston/')):continue # a harness smoke is not an app
             add(name,cwd,step.get('command'))
         elif name in explicit_checks:
             add(name,cwd,step.get('command'))
+    # Slice verification uses actual project-local scripts; integration still
+    # requires browser coverage for affected web apps (not unrelated suites).
+    for i,rel in enumerate(web_roots):
+        if rel not in direct_web:continue
+        if slice_only:
+            add('web_verify'+('' if i==0 else f'__{i}'),rel,['npm','run','project-local-checks'])
+        elif not any(c['name'].startswith('web_e2e') and c['cwd']==rel for c in checks):
+            missing.add('web_e2e:'+rel)
     # Require real client gates even if the project has not authored tests yet.
-    for kind,gate in (('web','web_e2e'),('flutter','flutter_tests')):
+    for kind,gate in (('flutter','flutter_tests'),):
         for i,rel in enumerate(projects.get(kind,[])):
             if not any(in_project(p,rel) for p in paths) and not (len(projects[kind])==1 and (kind=='web' and 'web' in explicit or kind=='flutter' and 'mobile' in explicit)):continue
             name=gate+('' if i==0 else f'__{i}')
@@ -77,6 +96,8 @@ def produce(root: Path, task: dict, build: dict, cfg: dict) -> dict:
         if gate in ('postgres_integration','security_checks','performance_benchmark') and gate not in explicit_checks:
             advisory.add(gate)
         elif gate=='api_integration' and managed:continue
+        elif gate=='web_e2e' and direct_web and slice_only and gate not in explicit_checks:continue
+        elif gate=='web_e2e' and direct_web and gate not in explicit_checks:continue # exact project coverage checked above
         elif gate in ('backend_verify','web_e2e','flutter_tests') and any(c['name'].startswith(gate) for c in checks):continue
         else:missing.add(gate)
     return {'status':'coverage_gap' if missing else 'ready','policy_version':35,
