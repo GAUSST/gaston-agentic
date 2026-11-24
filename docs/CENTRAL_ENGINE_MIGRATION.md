@@ -49,3 +49,11 @@ All remaining implementation and stabilization work belongs to **one PR #9**, in
 8. **Release:** Bump version and sign/tag v1.6.0 **only after all gates pass**. Passing the current 6-job regression matrix without functional acceptance is insufficient.
 
 **Status:** Release contract and automatic project layout detection are only the first implementation step inside PR #9. The other gates must be implemented and verified on the same branch before this draft can be merged.
+
+## PR #9: central project uninstall ownership (implemented on branch, awaiting review)
+
+A source-free project supports `dev uninstall` (and `GASTON_ENGINE_MODE=central dev uninstall`). The default **Keep** option removes only `.gaston/project.json` and preserves project context, local task history, sessions, configuration and user-defined rules. Re-running `dev init` restores the adapter without replacing the kept data.
+
+**Erase** requires an exact `ERASE GASTON DATA` confirmation followed by `UNINSTALL`; it removes the project's `.gaston` data directory only, and rejects symlinks and managed active workers. The project source tree, any old `.agentic` context, global engine, Git history and external provider sessions are excluded from deletion.
+
+This is project-level uninstall only. The independent global engine uninstall and signed updater are still release blockers, and the feature is not sufficient to mark PR #9 ready to merge.

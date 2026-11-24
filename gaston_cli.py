@@ -82,6 +82,17 @@ def _central_init() -> int:
     return 0
 
 
+def _central_uninstall(root: Path) -> int:
+    """Remove only the project's central adapter and optional Gaston data."""
+    from importlib import util
+    spec = util.find_spec('gaston_engine')
+    if spec is None or spec.origin is None or Path(spec.origin).resolve().is_relative_to(root):
+        raise RuntimeError('A trusted externally installed Gaston engine is required')
+    from gaston_engine.central_uninstall import uninstall_project
+    uninstall_project(root)
+    return 0
+
+
 def main():
     try:
         mode = os.environ.get('GASTON_ENGINE_MODE', 'auto').strip().lower()
@@ -97,7 +108,9 @@ def main():
             if mode == 'central':
                 if arguments == ['init']:
                     return _central_init()
-                root, _ = find_project(start)
+                root, kind = find_project(start)
+                if kind == 'central' and arguments == ['uninstall']:
+                    return _central_uninstall(root)
                 return _central_launch(root)
 
             root, kind = find_project(start, allow_new=arguments == ['init'])
@@ -106,6 +119,8 @@ def main():
             if kind == 'central':
                 if arguments == ['init']:
                     return _central_init()
+                if arguments == ['uninstall']:
+                    return _central_uninstall(root)
                 return _central_launch(root)
 
             # A legacy project stays on its established runtime and is never

@@ -88,7 +88,7 @@
     ".agents/skills/e2e-feature/SKILL.md": "7206232eb7be69e26e46649298b3978c26943ec6c69e26b2f95df280833d6ae6",
     ".agents/skills/fintech-invariants/SKILL.md": "c9eb6d6593fe23a6cd6548b463d8ed63d2b40234eaa21d15720080627825c39d",
     ".claude/skills/independent-review/SKILL.md": "8d47180b5fc2bcd704777fd4f52978e0b55bf0267f456f6c3ae2d46e0dc4fe9b",
-    ".github/workflows/native-cli-validation.yml": "20ab13c72a0c178929f1d65d14cc6783faf36394c24eb7a0073803cbee5b197a",
+    ".github/workflows/native-cli-validation.yml": "a790005385ca98a9a6049c45be7edbc7381846beefe2758b373988de538324bb",
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "15bc681b7af988820a219d3bdede340f98fdbf7649b3605adc49488c39a33051",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
@@ -98,7 +98,7 @@
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "cf68200fd9600abf9703649e9ec3c65d047be34af42872a8f6c24beb562106b9",
-    "gaston_cli.py": "e3767ab27efd7bb583c237c5f945bb926cedb990af14d8135559a07c182997f8",
+    "gaston_cli.py": "3e9d5ab938a9018436ab10c1c2423d7ebd4f078987c8c4c278b374d262ab69dd",
     "pyproject.toml": "3f27b2858b4a3cf6eec489791b32cfee3cc240ca056b7efee37920ec32685696",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
@@ -109,9 +109,11 @@
     ".agentic/project_layout.py": "a63acc2c237f98cf664baafb2e9fc5b6ed09d2026da542f4b2a49a929b559690",
     ".agentic/test_project_layout.py": "112815115d12d66de5833a4a2f73c8c0ada7adc99601cd323be7d79655f30edc",
     ".agentic/__init__.py": "580783cdb23f64de5579d7da91c6e6ff454d54be54d7dadf3eb5990f342e9e23",
-    "docs/CENTRAL_ENGINE_MIGRATION.md": "56c2e0d71adce5d5ef33ade505f6e206bfa06e6e84a0af971e929d212e923649",
+    "docs/CENTRAL_ENGINE_MIGRATION.md": "874b85dc55068b917fed6dd0d2f112cec1fa120e1a2cf3d0eaeb191b5c234e38",
     ".agentic/test_central_dispatch.py": "4ac204c9663754fca9c4f0f0968171dbd1a64f4bf6975572631ce0693c631fe0",
-    ".agentic/test_central_init.py": "7e1b25cbec755d5c20200c0260aff6eaf50bc4c150655a1d9cacf1917ae42610"
+    ".agentic/test_central_init.py": "7e1b25cbec755d5c20200c0260aff6eaf50bc4c150655a1d9cacf1917ae42610",
+    ".agentic/central_uninstall.py": "9a6a1bb544578f8b1574a415386c38e69a58165dc560ac896bd56bd286150a37",
+    ".agentic/test_central_uninstall.py": "583c760b470000494d155d2d318924e5f29ecda9c0b3da1aca5dc80659bc4e5a"
   },
   "build": "1.5.5"
 }
