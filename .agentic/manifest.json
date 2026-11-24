@@ -98,7 +98,7 @@
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "cf68200fd9600abf9703649e9ec3c65d047be34af42872a8f6c24beb562106b9",
-    "gaston_cli.py": "45210d197258cb16496c912faebe5f5f912e9c4047d032f89ccd2110d6467aa1",
+    "gaston_cli.py": "e3767ab27efd7bb583c237c5f945bb926cedb990af14d8135559a07c182997f8",
     "pyproject.toml": "3f27b2858b4a3cf6eec489791b32cfee3cc240ca056b7efee37920ec32685696",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",

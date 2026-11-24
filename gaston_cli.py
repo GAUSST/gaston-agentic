@@ -57,6 +57,9 @@ def _central_launch(root: Path) -> int:
         raise RuntimeError('Refusing to execute project-local or incomplete Gaston engine code')
 
     os.environ['GASTON_ENGINE_PROJECT'] = str(root)
+    # Auto layout dispatch must propagate central mode to the installed launcher,
+    # otherwise it attempts to execute a missing project-local .agentic/eng.py.
+    os.environ['GASTON_ENGINE_MODE'] = 'central'
     sys.path.insert(0, str(engine_dir))
     from gaston_engine.launcher import main as launch
     return launch()
