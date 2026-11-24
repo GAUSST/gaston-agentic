@@ -12,7 +12,9 @@
 
 ```sh
 # Install the engine once.
-python -m pip install .
+python3 .agentic/central_install.py
+# Windows PowerShell: py -3 .agentic/central_install.py
+# Open a new terminal, then change to the application directory.
 
 # Inside an existing application repository:
 dev init
