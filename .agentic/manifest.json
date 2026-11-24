@@ -80,7 +80,7 @@
     ".agentic/token_intelligence.py": "ac7491360c90904bf65ae576f56f75cb6df807864769cd877b223cfd0ab35424",
     ".agentic/uninstall.py": "060c343c31af86feb5d452f71f8f67ad26ade28c4129eb4a186d4caafdd3c2cc",
     ".agentic/verification_brief.py": "e408551000a99be068ceb3917d806f75292a0135e3e37a9e343304148e1cef7d",
-    ".agentic/verification_mcp.py": "051e2f7977d5b1db4f0ecb5adcbf2d79c1d2d03b2bc0ac46def9e0456a29eb9d",
+    ".agentic/verification_mcp.py": "c679d768d802357aceff59d54b564bd041ddbcce9ea257103e9f47c62faaadb2",
     ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
     ".agentic/workspace_checks.py": "6d6e4e8cd8cca962ae1fb9143167e294d7c989bc775f432d0104fc8edb983bf5",
     ".agentic/workspace_git.py": "002140e779f2ec6b9e2df251c7bea76b3321e2de73d69cde37b63a03f1dc13c5",

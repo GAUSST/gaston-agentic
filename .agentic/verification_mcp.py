@@ -6,7 +6,7 @@ Temporary browser smoke fixtures are created under .agentic/local only.
 MCP JSON-RPC stdio; stdout is *exclusively* protocol messages.
 """
 from __future__ import annotations
-from project_layout import project_root, project_state, runtime_script, runtime_manifest, central_mode
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import json
 import atexit
 import signal
@@ -1369,9 +1369,9 @@ def acceptance_evidence_detail(task_id,check_id,include_logs=False):
             'evidence':evidence_efficiency.compact_outcome(entry.get('evidence',{}),failure=entry.get('result')!='pass')}
     if include_logs:
         rel=(entry.get('evidence') or {}).get('log_path')
-        if isinstance(rel,str) and rel.startswith('.agentic/local/backend-logs/'):
+        if isinstance(rel,str) and rel.startswith(project_state_name()+'/local/backend-logs/'):
             path=(ROOT/rel).resolve()
-            allowed=(LOCAL/'backend-logs').resolve()
+            allowed=(project_state(ROOT)/'local/backend-logs').resolve()
             if path.is_relative_to(allowed) and path.is_file() and not path.is_symlink():
                 result['log_excerpt']=path.read_text(encoding='utf8',errors='replace')[-8000:]
         else:
