@@ -38,7 +38,7 @@ ERROR_RETRY_SECONDS = 60 * 60
 MAX_JSON = 1024 * 1024
 MAX_ARCHIVE = 40 * 1024 * 1024
 MAX_UNPACKED = 80 * 1024 * 1024
-AGENT = 'Gaston-Agentic-updater/1.5.4'
+AGENT = 'Gaston-Agentic-updater/1.5.5'
 
 
 class UpdateError(RuntimeError):
