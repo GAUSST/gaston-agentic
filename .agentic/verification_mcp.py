@@ -91,7 +91,7 @@ TOOLS = [
     {'name':'run_web_smoke','description':'Run an isolated temporary Playwright counter test; default headless. Set visible=true to show a dedicated browser window for observation on a graphical desktop; clean up temporary fixtures.',
      'inputSchema':{'type':'object','properties':{'visible':{'type':'boolean','description':'Show a dedicated isolated Chromium window for visual debugging (default false). Requires a desktop display.'}},'additionalProperties':False}},
     {'name':'run_project_web_tests','description':'Execute existing Playwright tests using native webServer or an isolated project-owned backend launcher, with an explicit loopback external URL as fallback. Never create or edit application tests.',
-     'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Web project relative path; required if multiple valid web apps exist'}},'additionalProperties':False}},
+     'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Web project relative path; required if multiple valid web apps exist'},'visible':{'type':'boolean','description':'Run actual project specs in a headed browser for visual review; default false'}},'additionalProperties':False}},
     {'name':'start_existing_emulator','description':'Start an already installed Android AVD (not a physical device). Does not install system packages.',
      'inputSchema':{'type':'object','properties':{'name':{'type':'string','description':'Exact name returned by environment_status. Optional when just one AVD exists.'}},'additionalProperties':False}},
     {'name':'finish_mobile_verification','description':'Finish the mobile verification session and shut down only the Android emulator started by this Gaston verification process. Never stop pre-existing devices.',
@@ -160,7 +160,7 @@ _schema('record_project_roadmap','Save only explicitly developer-approved future
         {'milestones':{'type':'array','items':_milestone},'approved_decisions':{'type':'array','items':_decision},'next_milestone_id':_str,'developer_confirmed':{'type':'boolean'},'expected_sha256':{'type':['string','null']}},
         ['milestones','approved_decisions','next_milestone_id','developer_confirmed'])
 _schema('lead_context_budget','Read native Lead context and counters at a natural checkpoint. No new model call or conversation deletion.',{},[])
-_schema('checkpoint_lead_context','Persist factual decisions, next steps and exact task/plan IDs once at a natural checkpoint. Safe idle rollover is eligible only above context budget, without active work or newer developer messages. Do not record secrets.',{'summary':_str,'decisions':_strings,'next_steps':_strings,'task_ids':_strings,'plan_ids':_strings,'safe_to_rotate':{'type':'boolean'}},['summary','decisions','next_steps','task_ids','plan_ids','safe_to_rotate'])
+_schema('checkpoint_lead_context','Persist factual decisions, next steps and exact task/plan IDs once at a natural checkpoint. Safe idle rollover is eligible only above context budget, without active work or newer developer messages. Do not record secrets.',{'summary':_str,'decisions':_strings,'next_steps':_strings,'task_ids':_strings,'plan_ids':_strings,'safe_to_rotate':{'type':'boolean'},'continue_work':{'type':'boolean','description':'True only if current developer authorized further work and no pause or required decision exists; checkpoint is not completion'}},['summary','decisions','next_steps','task_ids','plan_ids','safe_to_rotate'])
 _schema('evolution_status','Show local improvement candidates, actual test outcomes and queued activation/rollback; current toolkit stays unchanged during active work.',{},[])
 _schema('queue_evolution','Queue one validated candidate or rollback of latest applied candidate for an idle ./dev startup. Ordinary helper fixes activate after validation; runtime/policy changes require actual developer confirmation at startup. No live writes, no Git changes.',{'candidate_id':_str,'rollback':{'type':'boolean'}},['candidate_id'])
 _schema('cancel_evolution','Cancel pending activation or rollback without changing installed toolkit.',{},[])
@@ -286,7 +286,7 @@ def run_web_smoke(visible=False):
                         note='Temporary HTML/spec cleaned up; application files untouched',evidence=result)
 
 
-def run_project_web_tests(project=None):
+def run_project_web_tests(project=None,visible=False):
     """Run the selected app's real Playwright specs with a managed lifecycle."""
     import workspace_checks
     import web_acceptance
@@ -298,7 +298,7 @@ def run_project_web_tests(project=None):
     if project is None and len(candidates)==1:project=candidates[0]
     if project not in candidates:
         return response('blocked',reason='Select exactly one app with real Playwright specs',projects=candidates)
-    return web_acceptance.run_browser(ROOT,project,execute=execute,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'))
+    return web_acceptance.run_browser(ROOT,project,execute=execute,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'),visible=visible)
 
 
 
@@ -1845,7 +1845,7 @@ CALLS={
        'environment_status':lambda args:status(),
        'browser_diagnose':lambda args:browser_diagnose(),
        'run_web_smoke':lambda args:run_web_smoke(args.get('visible',False)),
-       'run_project_web_tests':lambda args:_standalone_verification('web',args.get('project'),lambda:run_project_web_tests(args.get('project'))),
+       'run_project_web_tests':lambda args:_standalone_verification('web',args.get('project'),lambda:run_project_web_tests(args.get('project'),args.get('visible',False))),
        'start_existing_emulator':lambda args:start_existing_emulator(args.get('name','')),
        'run_maestro_tests':lambda args:run_maestro_tests(args.get('relative_path','.maestro')),
        'finish_mobile_verification':lambda args:finish_mobile_verification(),

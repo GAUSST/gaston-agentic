@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
 from urllib.parse import urlparse
 
 import workspace_checks
@@ -98,7 +99,7 @@ def _backend_for(root, folder):
     return None
 
 
-def run_browser(root, project, *, execute, external_url=None):
+def run_browser(root, project, *, execute, external_url=None, visible=False):
     root = Path(root).resolve()
     try:
         folder = _project(root, project)
@@ -110,15 +111,33 @@ def run_browser(root, project, *, execute, external_url=None):
         config = configs[0]
         source = config.read_text(encoding='utf-8')
         backend = _backend_for(root, folder)
+        descriptor=folder/'gaston-web-e2e.json'
+        split=False
+        if descriptor.is_file():
+            data=json.loads(descriptor.read_text(encoding='utf-8'))
+            split=data.get('frontend')=='playwright_webServer'
+            if data.get('frontend') not in (None,'playwright_webServer'):
+                raise ValueError('Unsupported frontend lifecycle; use playwright_webServer')
+        if split and (not backend or not re.search(r'\bwebServer\s*:',source)):
+            raise ValueError('Split app requires managed backend and project-owned Playwright webServer config')
+        if visible and os.name!='nt' and not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')) and __import__('platform').system()!='Darwin':
+            raise ValueError('Visible Chromium requires a graphical desktop; use headless if unavailable')
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return {'status':'blocked','project':project,'reason':str(exc)}
     def run(url=None):
         env = _environment()
         if url:
-            env.update(PLAYWRIGHT_BASE_URL=url, AGENTIC_TEST_API_BASE_URL=url)
-        result = execute([node,str(runner),'test','--config',str(config)],cwd=folder,env=env,timeout=600)
+            env['AGENTIC_TEST_API_BASE_URL']=url
+            if split:
+                with socket.socket() as sock:
+                    sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
+                env.update(PLAYWRIGHT_BASE_URL=f'http://127.0.0.1:{port}', GASTON_WEB_PORT=str(port), GASTON_API_BASE_URL=url)
+            else:env['PLAYWRIGHT_BASE_URL']=url
+        argv=[node,str(runner),'test','--config',str(config)]
+        if visible:argv.append('--headed')
+        result = execute(argv,cwd=folder,env=env,timeout=600)
         return {'status':'pass' if result.get('exit_code')==0 else 'blocked' if result.get('exit_code') is None else 'fail',
-                'project':project,'evidence':result}
+                'project':project,'evidence':result,'visible':visible,'frontend_url':env.get('PLAYWRIGHT_BASE_URL'),'backend_url':url}
     # Prefer Playwright's own lifecycle for a self-contained test config.
     # Config and tests are trusted project code, not arbitrary remote URLs.
     if re.search(r'\bwebServer\s*:', source) and backend is None:
@@ -127,7 +146,7 @@ def run_browser(root, project, *, execute, external_url=None):
     if backend is not None:
         import managed_backend
         result = managed_backend.run(root,backend,browser_check=run)
-        return {**result,'project':project,'backend_project':backend,'lifecycle':'managed_backend'}
+        return {**result,'project':project,'backend_project':backend,'lifecycle':'managed_backend_and_playwright_webServer' if split else 'managed_backend'}
     if external_url:
         try:
             parsed=urlparse(external_url)

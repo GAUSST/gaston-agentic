@@ -34,7 +34,7 @@ def lead_boundary(root,provider=None,sid=None):
     if not fingerprint:return None
     checkpoint=orch.read_record(folder/'lead-checkpoint.json')
     if checkpoint.get('session_id')==sid and checkpoint.get('last_user_fingerprint')==fingerprint and checkpoint.get('rotation_eligible'):return None
-    return {'context_tokens':budget.get('context_tokens'),'action':'Preserve factual outstanding user intent and state with checkpoint_lead_context now. Mark safe_to_rotate only if complete, then use native compaction or close and reopen ./dev. No second Lead or forced interruption.'}
+    return {'context_tokens':budget.get('context_tokens'),'action':'Preserve factual outstanding user intent and state with checkpoint_lead_context now. Mark safe_to_rotate only if complete, then continue the same authorized plan. Prefer provider-native automatic compaction. Never stop solely because the context is large or a checkpoint was saved. No second Lead or forced interruption.'}
 
 
 def stop_advisory(root,provider,sid):
@@ -50,3 +50,36 @@ def stop_advisory(root,provider,sid):
     if prior.get('session_id')==sid and prior.get('fingerprint')==fingerprint:return None
     orch.put(path,{'session_id':sid,'fingerprint':fingerprint,'recorded_at':time.time()})
     return advisory['action']
+
+
+def continuation_reason(root,provider,sid):
+    """At most one continuation reminder per distinct recorded progress boundary."""
+    row=orch.read_record(project_state(root)/'local/lead-checkpoint.json')
+    if row.get('provider')!=provider or row.get('session_id')!=sid or row.get('continue_work') is not True:
+        return None
+    fingerprint=ti.last_user_fingerprint(provider,sid)
+    if not fingerprint or fingerprint!=row.get('last_user_fingerprint'):
+        return None
+    if ti._rotation_blockers(root):
+        return None
+    ready=[]
+    for pid in row.get('plan_ids',[]):
+        try:plan=orch.plan_status(root,pid)
+        except (ValueError,OSError,KeyError):continue
+        if plan.get('all_items_done'):
+            continue
+        for item in plan.get('items',[]):
+            if item.get('executable') and item.get('status')=='pending':
+                ready.append((pid,item['id']))
+    if not ready:
+        return None
+    path=project_state(root)/'local/lead-continuation-notice.json'
+    prior=orch.read_record(path)
+    key=[list(x) for x in sorted(ready)]
+    if prior.get('session_id')==sid and prior.get('fingerprint')==fingerprint and prior.get('ready')==key:
+        return None
+    orch.put(path,{'session_id':sid,'fingerprint':fingerprint,'ready':key,'recorded_at':time.time()})
+    return ('The checkpoint records authorized continuation, and executable work remains: '
+            + ', '.join(pid+'/'+item for pid,item in ready[:8])+
+            '. Continue the current plan now, using native compaction if needed. '
+            'Do not request a wake-up message. Stop for a genuine blocker, required approval or developer pause; report it precisely.')
