@@ -1,4 +1,4 @@
-# Publishing and updating Gaston v1.5.4
+# Publishing and updating Gaston v1.5.5
 
 ## Trust and distribution
 
@@ -12,11 +12,11 @@ It is the only intended official update publisher. Before publishing a verified 
 
 1. Verify the published source contains only toolkit-owned files and no secrets.
 2. Require CI and protect the `main` branch and release tags.
-3. Create a **cryptographically signed annotated** tag `v1.5.4` pointing to the verified release commit, then push the tag.
+3. Create a **cryptographically signed annotated** tag `v1.5.5` pointing to the verified release commit, then push the tag.
    **Do not sign a stale local checkout:** `git fetch origin main` first;
    confirm `git rev-parse HEAD` matches `git rev-parse origin/main` and the
-   committed manifest has `release: v1.5.4`. Sign that exact verified SHA
-   (`git tag -s v1.5.4 VERIFIED_COMMIT_SHA -m 'Gaston v1.5.4'`).
+   committed manifest has `release: v1.5.5`. Sign that exact verified SHA
+   (`git tag -s v1.5.5 VERIFIED_COMMIT_SHA -m 'Gaston v1.5.5'`).
    Configure signature verification on GitHub beforehand.
 4. The `release.yml` workflow checks tag/build identity and audit/test gates
    across all three systems before publishing a GitHub Release. No ZIPs are

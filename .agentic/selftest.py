@@ -2061,7 +2061,7 @@ class V23WorkflowTests(unittest.TestCase):
             (root/'.agentic/manifest.json').write_text(json.dumps({'files':{'README.md':hashlib.sha256(b'owned').hexdigest()}}))
             (root/'sample-backend').mkdir();(root/'sample-backend/pom.xml').write_text('<project/>')
             with patch.dict(os.environ,{'CLAUDE_CONFIG_DIR':str(home/'.claude'),'CODEX_HOME':str(home/'.codex')}):
-                logs=[];result=uninstall.uninstall(root,input_fn=lambda prompt:'UNINSTALL',output=logs.append)
+                logs=[];result=uninstall.uninstall(root,input_fn=lambda prompt:('erase' if prompt.startswith('Mode ') else 'ERASE GASTON DATA' if prompt.startswith('Type ERASE ') else 'UNINSTALL'),output=logs.append)
             self.assertTrue(result)
             self.assertFalse(owned.exists());self.assertTrue(extra.exists())
             self.assertFalse(loc.exists());self.assertTrue((root/'sample-backend/pom.xml').exists())

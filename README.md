@@ -1,4 +1,4 @@
-# Gaston Agentic — v1.5.4
+# Gaston Agentic — v1.5.5
 
 Gaston is a **project-agnostic** engineering tool. It discovers the current
 project's stack, routes, tests, workflow, and conventions; no application name
@@ -96,7 +96,9 @@ Claude Lead is a native interactive conversation; existing registered IDs are pr
 
 ## Uninstall
 
-`./dev uninstall` previews the removal and requires exact `UNINSTALL` confirmation. It removes Gaston-owned files, local state, task evidence, custom rules and registered session bindings; supported provider transcripts are removed only when verified for this exact checkout. Modified shared files may require separate approval. Unrelated sessions, global tools, unrelated provider hooks, application repositories and credentials are preserved. Do not uninstall to upgrade. Close managed sessions before uninstalling.
+`./dev uninstall` previews the manifest-owned toolkit removal and offers **keep** (default) or **erase**. **Keep** removes Gaston code while preserving `.agentic/local`, task history, run evidence, custom rules, configuration and verified provider sessions, so a later `dev init` can reuse existing context. **Erase** additionally deletes Gaston-owned workspace state and exactly verified provider transcripts; it requires the separate phrase `ERASE GASTON DATA` and then `UNINSTALL`. Existing application source and user-owned documents are untouched in both modes. Modified shared toolkit files require separate approval. Unknown or unrelated provider sessions and global tools are never deleted. Close managed sessions before uninstalling. Do not uninstall merely to upgrade.
+
+**Planned v1.6 core separation:** the current v1.5 toolkit still stores runtime code inside each workspace. Central installation of the engine, migration to `.gaston/` integration-only project metadata, and explicit project-level reinitialization require a separate tested migration; this uninstall change only establishes the safe preservation contract and does not claim the new runtime layout already exists.
 
 Automated toolkit tests do not prove actual authenticated provider, device or application behavior. Inspect real local results before release.
 

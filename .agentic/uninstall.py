@@ -186,7 +186,7 @@ def _provider_session_files(root: Path, home: Path | None = None) -> tuple[list[
 
 
 def uninstall(root: Path, *, input_fn=input, output=print) -> bool:
-    """Preview, confirm, and delete only known toolkit files and state."""
+    """Preview and remove only toolkit-owned files; retain project memory by default."""
     root=Path(root).resolve()
     manifest_file=root/MANIFEST
     if _has_symlink_parent(root, MANIFEST) or manifest_file.is_symlink() or not manifest_file.is_file():
@@ -233,15 +233,34 @@ def uninstall(root: Path, *, input_fn=input, output=print) -> bool:
     output('GASTON AGENTIC — UNINSTALL')
     output(f'  Toolkit files: {len(pristine)}')
     output(f'  Modified toolkit files: {len(altered)}')
-    output(f'  Local data locations: {len(state)} (sessions, logs, screenshots, custom rules)')
+    output(f'  Gaston-owned local data locations: {len(state)}')
+    for rel in state:
+        output('  LOCAL DATA: ' + rel)
     output(f'  Generated toolkit bytecode files: {len(bytecode)}')
     output(f'  Hook settings changes: {len(hooks)}')
     output(f'  Verified Gaston provider transcripts: {len(provider_files)}')
-    for item in provider_files: output('  DELETE SESSION: '+str(item))
-    for note in provider_notes: output('  '+note)
-    for rel in altered: output('  MODIFIED: '+rel)
-    for line in hooks: output('  '+line)
-    output('  Application repositories, global CLI installations and accounts will be kept.')
+    for note in provider_notes: output('  ' + note)
+    for rel in altered: output('  MODIFIED: ' + rel)
+    for line in hooks: output('  ' + line)
+    output('  Project source code, user-owned documentation and global CLI installations remain untouched.')
+    output('  Keep (default): remove the toolkit but preserve local project context,')
+    output('    task history, sessions, custom rules and configuration for future dev init.')
+    output('  Erase: additionally delete Gaston-owned local data and exactly verified')
+    output('    provider transcripts; shared application documents remain untouched.')
+    selection=input_fn('Mode [keep/erase] (default: keep; anything else cancels): ').strip().lower()
+    if selection not in ('', 'keep', 'erase'):
+        output('Cancelled. No files changed.')
+        return False
+    erase = selection == 'erase'
+    if erase:
+        for item in provider_files: output('  DELETE SESSION: '+str(item))
+        answer=input_fn('Type ERASE GASTON DATA to confirm local data deletion: ').strip()
+        if answer!='ERASE GASTON DATA':
+            output('Cancelled. No files changed.')
+            return False
+    else:
+        for item in provider_files: output('  KEEP SESSION: '+str(item))
+        for rel in state: output('  KEEP DATA: '+rel)
     remove_modified=False
     if altered:
         while True:
@@ -257,12 +276,13 @@ def uninstall(root: Path, *, input_fn=input, output=print) -> bool:
         output('Cancelled. No files changed.')
         return False
     _remove_hooks(root,apply=True)
-    for path in provider_files:
-        if path.is_file() and not path.is_symlink():path.unlink()
-    for rel in state:
-        path=root/rel
-        if path.is_dir(): shutil.rmtree(path)
-        elif path.is_file(): path.unlink()
+    if erase:
+        for path in provider_files:
+            if path.is_file() and not path.is_symlink():path.unlink()
+        for rel in state:
+            path=root/rel
+            if path.is_dir(): shutil.rmtree(path)
+            elif path.is_file(): path.unlink()
     for rel in pristine+(altered if remove_modified else []):
         path=root/rel
         if path.is_symlink():
@@ -284,6 +304,8 @@ def uninstall(root: Path, *, input_fn=input, output=print) -> bool:
             except OSError:pass
     if altered and not remove_modified:
         output('Preserved modified files: '+', '.join(altered))
+    if not erase and state:
+        output('Project context preserved under .agentic/ for future dev init.')
     if provider_notes:output('  Some provider history was preserved because ownership could not be verified.')
     output('Gaston Agentic uninstalled from this workspace.')
     return True
