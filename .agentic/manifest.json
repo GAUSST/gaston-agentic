@@ -112,7 +112,7 @@
     "docs/CENTRAL_ENGINE_MIGRATION.md": "874b85dc55068b917fed6dd0d2f112cec1fa120e1a2cf3d0eaeb191b5c234e38",
     ".agentic/test_central_dispatch.py": "4ac204c9663754fca9c4f0f0968171dbd1a64f4bf6975572631ce0693c631fe0",
     ".agentic/test_central_init.py": "7e1b25cbec755d5c20200c0260aff6eaf50bc4c150655a1d9cacf1917ae42610",
-    ".agentic/central_uninstall.py": "9a6a1bb544578f8b1574a415386c38e69a58165dc560ac896bd56bd286150a37",
+    ".agentic/central_uninstall.py": "dd9068a3593b51c900d7625a090d960dc79781cf17bdbdfec9e98383aeb35607",
     ".agentic/test_central_uninstall.py": "583c760b470000494d155d2d318924e5f29ecda9c0b3da1aca5dc80659bc4e5a"
   },
   "build": "1.5.5"

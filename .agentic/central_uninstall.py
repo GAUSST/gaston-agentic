@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import shutil
 
-from project_layout import read_project_marker
+from .project_layout import read_project_marker
 
 
 def _state(root: Path) -> Path:
