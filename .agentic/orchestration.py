@@ -122,7 +122,9 @@ def create_plan(root, goal, items, *, existing=None):
         criteria=entry.get('acceptance_criteria',[])
         if not isinstance(criteria,list) or not all(isinstance(x,str) and x.strip() for x in criteria):raise ValueError('Invalid acceptance criteria')
         if kind=='implement' and not criteria:raise ValueError('Implementation slice needs measurable acceptance criteria')
-        normalized[name]={'id':name,'owner':owner,'kind':kind,'goal':desc.strip(),'depends_on':list(dict.fromkeys(deps)),'paths':paths,'acceptance_criteria':criteria}
+        idle=entry.get('requires_idle_workspace',False)
+        if type(idle) is not bool:raise ValueError('requires_idle_workspace must be boolean')
+        normalized[name]={'id':name,'owner':owner,'kind':kind,'goal':desc.strip(),'depends_on':list(dict.fromkeys(deps)),'paths':paths,'acceptance_criteria':criteria,'requires_idle_workspace':idle}
     pending=set(normalized);done=set()
     while pending:
         ready={x for x in pending if set(normalized[x]['depends_on'])<=done}
@@ -164,9 +166,15 @@ def plan_status(root,key):
     plan=get_plan(root,key);items=plan['items'];statuses={k:item_status(root,v) for k,v in items.items()}
     result=[]
     for k,v in items.items():
-        ready=all(statuses[x]=='done' for x in v['depends_on'])
-        result.append({**v,'status':statuses[k],'ready':ready and statuses[k]=='pending'})
-    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'note':'Run ready independent Lead items while Builder works; then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
+        ready=all(statuses[x]=='done' for x in v['depends_on']) and statuses[k]=='pending'
+        blockers=[]
+        if running and (v.get('requires_idle_workspace',False) or v['owner']=='builder'):
+            blockers.append('active_builder')
+        if running and v['owner']=='lead' and v['kind']=='implement' and any(not r.get('scope') or overlaps(v['paths'],r['scope']) for r in running):
+            blockers.append('overlapping_builder_scope')
+        result.append({**v,'status':statuses[k],'ready':ready,'dependency_ready':ready,
+                       'executable':ready and not blockers,'execution_blockers':blockers})
+    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'note':'Run executable independent Lead items while Builder works; dependency-ready items may be blocked. Use wait_for_builder once no independent work is executable; never mark deferred work done. Then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
 
 
 def select_item(root, key, name, owner, kind):
@@ -174,7 +182,22 @@ def select_item(root, key, name, owner, kind):
     if not item or item['owner']!=owner or item['kind']!=kind:raise ValueError('Work item owner or kind mismatch')
     if item_status(root,item)!='pending' or item.get('task_id'):raise ValueError('Work item already started; resume its existing task')
     if any(item_status(root,plan['items'][d])!='done' for d in item['depends_on']):raise ValueError('Complete prerequisite work items first')
+    if item.get('requires_idle_workspace') and active_builders(root):raise ValueError('Work item requires an idle workspace; collect Builder completion first')
     return plan,item
+
+
+def defer_until_idle(root, key, name, reason):
+    """Annotate an existing pending Lead item; never fabricate completion."""
+    plan=get_plan(root,key)
+    item=plan['items'].get(name)
+    if not item or item['owner']!='lead' or item_status(root,item)!='pending':
+        raise ValueError('Only a pending Lead work item may be deferred until idle')
+    if not isinstance(reason,str) or not reason.strip():
+        raise ValueError('Record the concrete execution blocker')
+    item['requires_idle_workspace']=True
+    item['idle_reason']=reason.strip()
+    put(plan_file(root,key),plan)
+    return plan_status(root,key)
 
 
 def bind(root,plan,item,task_id):
