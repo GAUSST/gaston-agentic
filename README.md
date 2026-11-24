@@ -131,3 +131,9 @@ The Lead can batch multiple exact replacements in a single file using `lead_edit
 Additional exact delegation paths update the plan scope. Idle tasks can request scoped extensions, record inspected answers to pending questions, or abandon an empty Lead micro-task without fabricated edits. Reconcile unexplained scope observations with explicit attribution evidence; extend scope first for legitimate Builder changes. Prior records remain auditable. Known direct native edits are scoped where hooks are active; arbitrary shell and external tools are not path-sandboxed. Serena remains optional and records retrieval counts, outcomes and returned bytes.
 
 The Lead may declare ordinary non-executable prose paths before verification. Reuse requires matching runtime revision and Git workspace fingerprints; contracts, executable files, other gates and documentation coverage are not skipped. No measured savings are claimed until comparable real workloads are observed.
+
+## Central-engine migration: staged implementation
+
+The globally installed `dev` Python distribution now also **packages Gaston's engine** as `gaston_engine`, not just the CLI wrapper. This is a backwards-compatible step towards v1.6. **The current CLI still dispatches to each legacy workspace's `.agentic` files; global dispatch is not active yet. Do not remove or move `.agentic`.**
+
+The target is one independently updated engine and only project-specific configuration, product context, sessions, tasks and evidence inside the application. Future `dev init` and `dev uninstall` will use this separation, retaining context by default. See [central-engine migration](docs/CENTRAL_ENGINE_MIGRATION.md). No automatic migration, file deletion, or new project initialization happens in this packaging phase.

@@ -9,7 +9,8 @@ import platform
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from project_layout import project_root
+ROOT = project_root()
 MINIMUM_PYTHON = (3, 10)
 
 
