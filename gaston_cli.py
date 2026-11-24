@@ -32,13 +32,18 @@ def _central_launch(root: Path) -> int:
     from importlib import metadata, util
     import json
 
-    manifest_path = root / '.agentic/manifest.json'
-    if manifest_path.is_symlink():
-        raise RuntimeError('Refusing a linked workspace manifest')
-    manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
-    version = metadata.version('gaston-agentic-cli')
-    if manifest.get('build') != version:
-        raise RuntimeError('Central preview requires installed engine and workspace toolkit to have the same version')
+    adapter = root / '.gaston/project.json'
+    if adapter.exists() or adapter.is_symlink():
+        from gaston_engine.project_layout import read_project_marker
+        read_project_marker(root)
+    else:
+        manifest_path = root / '.agentic/manifest.json'
+        if manifest_path.is_symlink():
+            raise RuntimeError('Refusing a linked workspace manifest')
+        manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+        version = metadata.version('gaston-agentic-cli')
+        if manifest.get('build') != version:
+            raise RuntimeError('Central preview requires installed engine and workspace toolkit to have the same version')
     # Until hooks, MCP helpers and project state move to central ownership,
     # central preview is read-only. Never execute incomplete runtime flows.
     if sys.argv[1:] != ['--help']:
@@ -57,18 +62,40 @@ def _central_launch(root: Path) -> int:
     return launch()
 
 
+def _central_init() -> int:
+    """Opt-in: write only .gaston/project.json into an existing project."""
+    from importlib import metadata, util
+    target = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
+    spec = util.find_spec('gaston_engine')
+    if spec is None or spec.origin is None or Path(spec.origin).resolve().is_relative_to(target):
+        raise RuntimeError('A trusted, externally installed Gaston engine is required')
+    from gaston_engine.project_layout import initialize_project
+    root, created = initialize_project(target, engine_version=metadata.version('gaston-agentic-cli'))
+    if created:
+        print('Gaston central project adapter created: ' + str(root / '.gaston/project.json'))
+    else:
+        print('Gaston central project adapter already exists: ' + str(root / '.gaston/project.json'))
+    print('Central engine setup is a preview. Hooks, sessions and migrations are not activated yet.')
+    return 0
+
+
 def main():
     try:
-        root = workspace()
         mode = os.environ.get('GASTON_ENGINE_MODE', 'legacy').strip().lower()
-        if mode == 'central':
-            return _central_launch(root)
-        if mode != 'legacy':
+        if mode not in ('legacy', 'central'):
             raise ValueError('GASTON_ENGINE_MODE must be legacy or central')
+        if mode == 'central':
+            if sys.argv[1:] == ['init']:
+                return _central_init()
+            from gaston_engine.project_layout import find_project
+            start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
+            root, _ = find_project(start)
+            return _central_launch(root)
+        root = workspace()
         sys.path.insert(0, str(root/'.agentic'))
         from launcher import main as launch
         return launch()
-    except (ValueError, RuntimeError, FileNotFoundError) as exc:
+    except (ValueError, RuntimeError, FileNotFoundError, OSError) as exc:
         print('Gaston: '+str(exc),file=sys.stderr)
         return 2
 
