@@ -72,7 +72,7 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'feedback':{'type':'string','description':'Complete reviewed implementation defects and requested edits'},'specification_files':{'type':'array','items':{'type':'string'},'description':'Optional additional workspace-relative specification documents'},'risk':{'type':'string','enum':['normal','high']}},'required':['task_id','feedback'],'additionalProperties':False}},
     {'name':'verify_delegated_backend_task','description':'Record independent backend test results and code review, reusing current results when available. A backend pass alone never finalizes a task with incomplete required gates. Run other gates and finalize separately.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
-    {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Call this MCP tool directly; the native client may manage its own background execution. Never create a Bash watcher, sleep loop or background shell. Do not end with a progress-only response instead of this call. Does not start tests or repair.',
+    {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Check executable independent Lead work first. An explicit call always subscribes to actual Builder completion, even if dependency-ready items remain. The native client may manage its own background execution. Never create a Bash watcher, sleep loop or background shell. Do not end with a progress-only response instead of this call. Does not start tests or repair.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
     {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=web_verify executes selected project unit/typecheck/lint/build scripts for scoped web slices; kind=web executes real browser acceptance with isolated startup. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','web_verify','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
@@ -114,14 +114,15 @@ def response(status: str, **fields) -> dict:
 
 
 # Provider-independent orchestration, exposed through the same Lead-only server.
-_item_schema={'type':'object','properties':{'id':{'type':'string'},'owner':{'type':'string','enum':['lead','builder']},'kind':{'type':'string','enum':['inspect','implement']},'goal':{'type':'string'},'paths':{'type':'array','items':{'type':'string'}},'depends_on':{'type':'array','items':{'type':'string'}},'acceptance_criteria':{'type':'array','items':{'type':'string'}}},'required':['id','owner','kind','goal'],'additionalProperties':False}
+_item_schema={'type':'object','properties':{'id':{'type':'string'},'owner':{'type':'string','enum':['lead','builder']},'kind':{'type':'string','enum':['inspect','implement']},'goal':{'type':'string'},'paths':{'type':'array','items':{'type':'string'}},'depends_on':{'type':'array','items':{'type':'string'}},'acceptance_criteria':{'type':'array','items':{'type':'string'}},'requires_idle_workspace':{'type':'boolean','description':'True for runtime/API/browser acceptance or other tasks unsafe during active Builder edits'}},'required':['id','owner','kind','goal'],'additionalProperties':False}
 _str={'type':'string'};_strings={'type':'array','items':_str}
 def _schema(name,description,properties,required):
     TOOLS.append({'name':name,'description':description,'inputSchema':{'type':'object','properties':properties,'required':required,'additionalProperties':False}})
-_schema('plan_work','Decompose a substantial task into small coherent implementation slices and independent Lead inspections. Record real dependencies and narrow workspace-relative write paths. Inspection belongs to Lead. Do independent work while Builder implements. Avoid a single broad checkpoint delegation.',{'goal':_str,'items':{'type':'array','items':_item_schema}},['goal','items'])
+_schema('plan_work','Decompose a substantial task into small coherent implementation slices and independent Lead inspections. Record real dependencies and narrow workspace-relative write paths. Inspection belongs to Lead. Set requires_idle_workspace=true for runtime acceptance and other exclusive checks. Do executable independent work while Builder implements. Avoid a single broad checkpoint delegation.',{'goal':_str,'items':{'type':'array','items':_item_schema}},['goal','items'])
 _schema('extend_work_plan','Add concrete newly discovered remediation slices to an unaccepted plan; preserve all existing work and dependencies.',{'plan_id':_str,'items':{'type':'array','items':_item_schema}},['plan_id','items'])
+_schema('defer_work_item','Mark an existing pending Lead item as requiring an idle workspace after an actual execution blocker. Does not close the item, alter dependencies or mark evidence passed.',{'plan_id':_str,'item_id':_str,'reason':_str},['plan_id','item_id','reason'])
 _schema('work_plan_usage','Show observed per-slice and checkpoint usage, handoff bytes, corrections, tests and provider interruptions. Missing usage remains unknown.',{'plan_id':_str},['plan_id'])
-_schema('work_plan_status','Return compact plan state and ready work; detailed=true returns full goals, criteria and evidence when necessary. Do not repeatedly poll live jobs.',{'plan_id':_str,'detailed':{'type':'boolean'}},['plan_id'])
+_schema('work_plan_status','Return compact plan state with dependency_ready, executable and execution_blockers. Only executable independent Lead work can run concurrently; detailed=true returns full goals, criteria and evidence when necessary. Do not repeatedly poll live jobs.',{'plan_id':_str,'detailed':{'type':'boolean'}},['plan_id'])
 _schema('inspect_workspace_files','Batch concurrent read-only checks for explicit files; returns existence, SHA256, matching line numbers for optional literal contains; no model calls. Read relevant source using native tools before interpretation.',{'files':{'type':'array','items':{'type':'object','properties':{'path':_str,'contains':_str},'required':['path'],'additionalProperties':False}}},['files'])
 _schema('record_lead_inspection','Record independent Lead evidence (exact files, findings, decisions and gaps) for an inspection item; do not delegate inspection to Builder.',{'plan_id':_str,'item_id':_str,'evidence':_str,'followup_items':{'type':'array','items':_item_schema,'description':'Required for newly discovered implementation gaps not already planned; add specific remediation work now'}},['plan_id','item_id','evidence'])
 _schema('start_lead_implementation','Open a small Lead-owned local implementation/test setup slice, no Builder. Use plan_id/item_id or goal, exact paths and acceptance_criteria. Use only authorized development scope.',{'plan_id':_str,'item_id':_str,'goal':_str,'paths':_strings,'acceptance_criteria':_strings},[])
@@ -1239,12 +1240,10 @@ def wait_for_builder(task_id, timeout_seconds=BUILDER_WAIT_SECONDS, *, cancel_ev
     runtime_recovery.recover(ROOT)
     if cancel_event is None or not cancel_event.is_set():
         _retry_known_startup_failure(folder)
-    task=task_runtime.read_record(folder/'task.json')
-    if task.get('work_plan_id') and task_runtime.read_record(folder/'state.json').get('stage') in task_runtime.RUNNING:
-        report=orch.plan_status(ROOT,task['work_plan_id'])
-        scope=task.get('write_scope') or []
-        ready=[item for item in report['items'] if item['ready'] and item['owner']=='lead' and (item['kind']=='inspect' or scope and not orch.overlaps(item['paths'],scope))]
-        if ready:return response('lead_work_available',task_id=task_id,builder_finished=False,ready_lead_items=ready,note='Do these independent Lead tasks now instead of waiting. Register completion wait afterward.')
+    # Explicit completion subscriptions are never refused based on plan labels.
+    # Independent work is advertised through work_plan_status, not a hard
+    # prerequisite: legacy/misclassified inspections can themselves be blocked.
+    # This guarantees the safe escape path even if a plan item is misclassified.
     def trace(event, **details):
         try:
             with (folder/'wait-events.jsonl').open('a',encoding='utf8') as f:
@@ -1313,8 +1312,11 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
     import acceptance_audit,evidence_efficiency,task_runtime
     if kind not in acceptance_audit.GATE_TYPES:return response('blocked',reason='Unsupported acceptance check')
     state=__import__('task_runtime').read_record(folder/'state.json')
-    if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required') or orch.active_builders(ROOT):
-        return response('blocked',reason='Implementation is active in shared workspace; continue inspections/test setup, then run independent tests')
+    running=orch.active_builders(ROOT)
+    if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required') or running:
+        return response('blocked',blocker='workspace_not_idle',requires_idle_workspace=True,active_builder_tasks=running,
+                        reason='Implementation is active in shared workspace; acceptance requires an idle workspace',
+                        next_action='If this is a pending Lead plan item, defer_work_item with the actual blocker. Use wait_for_builder on the active task once executable independent work is exhausted. Retry the gate after completion; do not mark it done.')
     # Slice checks select concrete changed JUnit test classes automatically;
     # integrated acceptance retains full-suite verification.
     current_task=task_runtime.read_record(folder/'task.json')
@@ -1508,6 +1510,7 @@ def _orchestration_action(action, args):
             data=[task_runtime.task_metrics(project_state(ROOT)/'runs'/tid) for tid in ids]
             return response('ready',plan_id=report['plan_id'],tasks=data,codex_usage_reported_tasks=sum(x['provider_usage']['tokens'] is not None for x in data),note='Only CLI-reported token counts. Unreported provider/Lead usage and savings remain unknown.')
         if action=='extend':return orch.extend_plan(ROOT,args.get('plan_id'),args.get('items'))
+        if action=='defer':return orch.defer_until_idle(ROOT,args.get('plan_id'),args.get('item_id'),args.get('reason'))
         if action=='inspect':return orch.inspect_files(ROOT,args.get('files'))
         if action=='record_inspection':return orch.inspection(ROOT,args.get('plan_id'),args.get('item_id'),args.get('evidence'),args.get('followup_items'))
         if action=='delegate':
@@ -1786,7 +1789,7 @@ CALLS={
        'task_code_review':lambda args:_code_review('status',args),
        'record_code_review':lambda args:_code_review('record',args),
        **{name:(lambda args, action=action:_evolution(action,args)) for name,action in {'learning_report':'learning','record_engineering_lesson':'lesson','code_health':'health','stage_evolution':'stage','validate_evolution':'validate','evolution_status':'status','queue_evolution':'queue','cancel_evolution':'cancel','export_toolkit':'export'}.items()},
-       **{name:(lambda args, action=action:_orchestrate(action,args)) for name,action in {'plan_work':'plan','extend_work_plan':'extend','work_plan_status':'status','work_plan_usage':'usage','inspect_workspace_files':'inspect','record_lead_inspection':'record_inspection','start_lead_implementation':'lead_start','take_over_builder_task':'takeover','lead_edit_files':'lead_edit','complete_lead_implementation':'lead_finish','review_work_slice':'slice_review','prepare_checkpoint_acceptance':'checkpoint'}.items()},'workspace_overview':lambda args:_workspace_op('inspect',args.get('action','overview'),args.get('relative_path',''),args.get('pattern',''),args.get('max_results',80)),
+       **{name:(lambda args, action=action:_orchestrate(action,args)) for name,action in {'plan_work':'plan','extend_work_plan':'extend','defer_work_item':'defer','work_plan_status':'status','work_plan_usage':'usage','inspect_workspace_files':'inspect','record_lead_inspection':'record_inspection','start_lead_implementation':'lead_start','take_over_builder_task':'takeover','lead_edit_files':'lead_edit','complete_lead_implementation':'lead_finish','review_work_slice':'slice_review','prepare_checkpoint_acceptance':'checkpoint'}.items()},'workspace_overview':lambda args:_workspace_op('inspect',args.get('action','overview'),args.get('relative_path',''),args.get('pattern',''),args.get('max_results',80)),
        'workspace_diagnostics':lambda args:_workspace_op('diagnostics',args.get('action','toolchain'),args.get('project',''),args.get('ports')),
        'workspace_logs':lambda args:_workspace_op('logs',args.get('relative_path'),args.get('pattern',''),args.get('lines',120)),
        'workspace_processes':lambda args:_workspace_op('processes'),
@@ -1836,13 +1839,13 @@ def compact_tool_response(name,out,args):
         if not isinstance(plan,dict) or not isinstance(plan.get('items'),list):return plan
         items=[]
         for item in plan['items']:
-            row={k:item[k] for k in ('id','owner','kind','status','ready','task_id','depends_on') if k in item}
+            row={k:item[k] for k in ('id','owner','kind','status','ready','dependency_ready','executable','execution_blockers','requires_idle_workspace','idle_reason','task_id','depends_on') if k in item}
             if item.get('ready') or item.get('id') in detail_ids:
                 row.update({k:item[k] for k in ('goal','paths','acceptance_criteria') if k in item})
             items.append(row)
         return {**plan,'items':items,'detail_available':'work_plan_status(detailed=true); full evidence retained on disk'}
     result=dict(out)
-    if name in ('record_lead_inspection','extend_work_plan','work_plan_status') and not args.get('detailed'):
+    if name in ('record_lead_inspection','extend_work_plan','defer_work_item','work_plan_status') and not args.get('detailed'):
         result=compact(result,detail_ids=[args.get('item_id')])
     if isinstance(result.get('work_plan'),dict):result['work_plan']=compact(result['work_plan'])
     if name in ('task_code_review','record_code_review') and isinstance(result.get('review'),dict):

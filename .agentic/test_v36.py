@@ -57,7 +57,7 @@ class CoordinationTests(unittest.TestCase):
     def test_plan_independent_inspection_and_test_edits_during_builder(self):
         pid=self.plan(self.item('admin','builder',self.source),self.item('inspect-keys','lead'),self.item('inspect-cleanup','lead'),self.item('later','builder',self.source2,['admin']))
         queued=self.delegate(pid);tid=queued['task_id'];self.assertEqual(queued['status'],'queued')
-        ready=self.call('wait_for_builder',task_id=tid);self.assertEqual(ready['status'],'lead_work_available');self.assertFalse(ready['builder_finished']);self.assertEqual({i['id'] for i in ready['ready_lead_items']},{'inspect-keys','inspect-cleanup'})
+        ready=self.call('work_plan_status',plan_id=pid);self.assertEqual({i['id'] for i in ready['items'] if i['owner']=='lead' and i['executable']},{'inspect-keys','inspect-cleanup'})
         self.assertEqual(self.delegate(pid,'later')['status'],'blocked')
         report=self.call('inspect_workspace_files',files=[{'path':self.source,'contains':'class'},{'path':self.source2}]);self.assertEqual(report['files'][0]['matching_lines'],[1]);self.assertIsNotNone(report['files'][1]['sha256'])
         for i in ['inspect-keys','inspect-cleanup']:
@@ -72,6 +72,58 @@ class CoordinationTests(unittest.TestCase):
         review=self.call('review_work_slice',task_id=tid,review_notes='Read changes and tests',documentation_reviews={},documentation_gaps=[]);self.assertEqual(review['status'],'pass',review)
         self.assertEqual(orch.read_record(f/'state.json')['stage'],'slice_reviewed');self.assertFalse(review['release_verified'])
         self.assertEqual(self.delegate(pid,'later')['status'],'queued')
+
+    def test_idle_gate_is_dependency_ready_but_not_executable(self):
+        gate={**self.item('lead-driver-api','lead'),'requires_idle_workspace':True}
+        pid=self.plan(self.item('admin','builder',self.source),gate)
+        tid=self.delegate(pid)['task_id']
+        row=next(i for i in self.call('work_plan_status',plan_id=pid)['items'] if i['id']=='lead-driver-api')
+        self.assertTrue(row['dependency_ready'])
+        self.assertFalse(row['executable'])
+        self.assertIn('active_builder',row['execution_blockers'])
+        blocked=self.call('run_task_acceptance_check',task_id=tid,kind='api',project='backend')
+        self.assertEqual(blocked['blocker'],'workspace_not_idle')
+        self.assertTrue(blocked['requires_idle_workspace'])
+        self.assertEqual(self.call('record_lead_inspection',plan_id=pid,item_id='lead-driver-api',evidence='not executed')['status'],'blocked')
+        self.finish_worker(tid)
+        row=next(i for i in self.call('work_plan_status',plan_id=pid)['items'] if i['id']=='lead-driver-api')
+        self.assertTrue(row['executable'])
+        self.assertEqual(row['status'],'pending')
+
+    def test_legacy_ready_item_cannot_veto_real_wait(self):
+        pid=self.plan(self.item('admin','builder',self.source),self.item('lead-driver-api','lead'))
+        tid=self.delegate(pid)['task_id']
+        def finish(folder,**kwargs):
+            self.finish_worker(tid)
+            return {'status':'ready','stage':'awaiting_lead_review','builder_finished':True,'elapsed_wait_seconds':0}
+        with patch.object(task_runtime,'wait_worker',side_effect=finish) as wait:
+            result=self.call('wait_for_builder',task_id=tid)
+        self.assertTrue(result['builder_finished'],result)
+        wait.assert_called_once()
+        self.assertEqual(orch.get_plan(self.root,pid)['items']['lead-driver-api'].get('evidence'),None)
+
+    def test_defer_existing_item_preserves_dependencies_and_pending_state(self):
+        pid=self.plan(self.item('admin','builder',self.source),self.item('lead-driver-api','lead'))
+        tid=self.delegate(pid)['task_id']
+        report=self.call('defer_work_item',plan_id=pid,item_id='lead-driver-api',reason='API gate requires idle workspace')
+        row=next(i for i in report['items'] if i['id']=='lead-driver-api')
+        self.assertEqual(row['status'],'pending')
+        self.assertTrue(row['requires_idle_workspace'])
+        self.assertFalse(row['executable'])
+        self.assertFalse(report['all_items_done'])
+        self.assertEqual(row['depends_on'],[])
+        with patch.object(task_runtime,'wait_worker',return_value={'status':'pending','builder_finished':False}) as wait:
+            result=self.call('wait_for_builder',task_id=tid)
+        self.assertEqual(result['status'],'pending')
+        wait.assert_called_once()
+        self.finish_worker(tid)
+        self.assertEqual(self.call('record_lead_inspection',plan_id=pid,item_id='lead-driver-api',evidence='Actual driver results reviewed')['status'],'ready')
+
+    def test_defer_rejects_builder_and_invalid_flag(self):
+        pid=self.plan(self.item('admin','builder',self.source))
+        self.assertEqual(self.call('defer_work_item',plan_id=pid,item_id='admin',reason='no')['status'],'blocked')
+        bad={**self.item('driver','lead'),'requires_idle_workspace':'true'}
+        self.assertEqual(self.call('plan_work',goal='invalid',items=[bad])['status'],'blocked')
 
     def test_direct_small_implementation_and_cas(self):
         pid=self.plan(self.item('small','lead',self.source2));start=self.call('start_lead_implementation',plan_id=pid,item_id='small');tid=start['task_id'];p=self.root/self.source2
