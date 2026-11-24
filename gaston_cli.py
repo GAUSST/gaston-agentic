@@ -57,6 +57,9 @@ def _central_launch(root: Path) -> int:
         raise RuntimeError('Refusing to execute project-local or incomplete Gaston engine code')
 
     os.environ['GASTON_ENGINE_PROJECT'] = str(root)
+    # Auto layout dispatch must propagate central mode to the installed launcher,
+    # otherwise it attempts to execute a missing project-local .agentic/eng.py.
+    os.environ['GASTON_ENGINE_MODE'] = 'central'
     sys.path.insert(0, str(engine_dir))
     from gaston_engine.launcher import main as launch
     return launch()
@@ -79,19 +82,52 @@ def _central_init() -> int:
     return 0
 
 
+def _central_uninstall(root: Path) -> int:
+    """Remove only the project's central adapter and optional Gaston data."""
+    from importlib import util
+    spec = util.find_spec('gaston_engine')
+    if spec is None or spec.origin is None or Path(spec.origin).resolve().is_relative_to(root):
+        raise RuntimeError('A trusted externally installed Gaston engine is required')
+    from gaston_engine.central_uninstall import uninstall_project
+    uninstall_project(root)
+    return 0
+
+
 def main():
     try:
-        mode = os.environ.get('GASTON_ENGINE_MODE', 'legacy').strip().lower()
-        if mode not in ('legacy', 'central'):
-            raise ValueError('GASTON_ENGINE_MODE must be legacy or central')
-        if mode == 'central':
-            if sys.argv[1:] == ['init']:
-                return _central_init()
+        mode = os.environ.get('GASTON_ENGINE_MODE', 'auto').strip().lower()
+        if mode not in ('auto', 'legacy', 'central'):
+            raise ValueError('GASTON_ENGINE_MODE must be auto, legacy or central')
+
+        # The source-free project adapter is authoritative only for the central
+        # installation. Legacy installations preserve their normal dispatch.
+        if mode in ('central', 'auto'):
             from gaston_engine.project_layout import find_project
             start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
-            root, _ = find_project(start)
-            return _central_launch(root)
-        root = workspace()
+            arguments = sys.argv[1:]
+            if mode == 'central':
+                if arguments == ['init']:
+                    return _central_init()
+                root, kind = find_project(start)
+                if kind == 'central' and arguments == ['uninstall']:
+                    return _central_uninstall(root)
+                return _central_launch(root)
+
+            root, kind = find_project(start, allow_new=arguments == ['init'])
+            if kind == 'new' and arguments == ['init']:
+                return _central_init()
+            if kind == 'central':
+                if arguments == ['init']:
+                    return _central_init()
+                if arguments == ['uninstall']:
+                    return _central_uninstall(root)
+                return _central_launch(root)
+
+            # A legacy project stays on its established runtime and is never
+            # silently initialized or migrated into the new project layout.
+            root = workspace(start)
+        else:
+            root = workspace()
         sys.path.insert(0, str(root/'.agentic'))
         from launcher import main as launch
         return launch()

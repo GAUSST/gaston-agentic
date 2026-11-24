@@ -32,3 +32,28 @@
 - The Linux full-suite test now locates the actual installed engine package instead of reading source-relative `.egg-info` file lists, which incorrectly failed PR #6's post-merge CI.
 
 **Do not manually delete `.agentic` or tag v1.6 until remaining gates pass.** The core execution preview does not yet repoint sidecar scripts, hooks, provider integrations, central updates or project state; it must not be used as evidence that source-free projects are functional.
+
+## PR #9 — single final v1.6 delivery branch (DRAFT)
+
+All remaining implementation and stabilization work belongs to **one PR #9**, including repairs discovered by CI. There is **no separate PR #10**. The first commit adds automatic project-mode selection: ordinary `dev init` in a fresh application creates a source-free `.gaston/project.json`, while `dev` in an existing legacy workspace continues on the legacy engine. Existing central projects select installed-engine dispatch automatically. Until the full runtime refactor is complete, most central commands remain preview-gated.
+
+### Release-blocking acceptance contract
+
+1. **Clean install:** A global `dev` installation is enough; running `dev init` in a clean application creates `.gaston/` context and adapter only, no copied `.agentic/*.py`, internal tests, source workflows, or root Gaston source documents. Central `dev`, `models`, `sessions` and approved provider integration work end-to-end.
+2. **Core and workers:** All agents, tools, MCP servers, native hooks, verifier/Builder workers, background hooks, provider CLI handoffs and standalone Python helper executions load the **installed trusted** engine. Never resolve executable core modules from user-controlled project files.
+3. **State:** Project sessions, tasks, evidence, custom policies, approved context sources, configuration, decisions and history live under project-owned `.gaston/`; no sensitive state moves to a global shared directory. Re-initialization is non-destructive. No automatic migrations.
+4. **Legacy migration:** Explicit preview and approval; copy or move each managed state location with verification, journal and rollback. Preserve existing session IDs and developer-owned documentation. Failed migration must leave legacy `dev` usable, without deleting or rewriting application code or original history.
+5. **Global updates:** Signed annotated release verification and SHA-256 integrity, transactional activation, version selection, rollback, and per-project compatibility checks. No release updates that overwrite project files or mix different engine versions. No silent upgrades.
+6. **Uninstall:** Project uninstall defaults to keeping durable context; separately confirmed full erase deletes **only clearly owned Gaston state**. Global engine/CLI removal is independent. Protect unrelated provider transcripts, application files, git repository, custom docs and shared configurations.
+7. **Cross-platform:** Native `dev` Python 3.11 and 3.13 on Windows/macOS/Linux. Tests cover nested projects, invalid/symlinked paths, concurrent active sessions, interrupted installs/migrations/updates, no-source projects and all CLI commands, plus representative real provider/MCP/hook integration with the user's approval.
+8. **Release:** Bump version and sign/tag v1.6.0 **only after all gates pass**. Passing the current 6-job regression matrix without functional acceptance is insufficient.
+
+**Status:** Release contract and automatic project layout detection are only the first implementation step inside PR #9. The other gates must be implemented and verified on the same branch before this draft can be merged.
+
+## PR #9: central project uninstall ownership (implemented on branch, awaiting review)
+
+A source-free project supports `dev uninstall` (and `GASTON_ENGINE_MODE=central dev uninstall`). The default **Keep** option removes only `.gaston/project.json` and preserves project context, local task history, sessions, configuration and user-defined rules. Re-running `dev init` restores the adapter without replacing the kept data.
+
+**Erase** requires an exact `ERASE GASTON DATA` confirmation followed by `UNINSTALL`; it removes the project's `.gaston` data directory only, and rejects symlinks and managed active workers. The project source tree, any old `.agentic` context, global engine, Git history and external provider sessions are excluded from deletion.
+
+This is project-level uninstall only. The independent global engine uninstall and signed updater are still release blockers, and the feature is not sufficient to mark PR #9 ready to merge.
