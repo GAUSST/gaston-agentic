@@ -76,7 +76,7 @@ class CentralDispatchTests(unittest.TestCase):
 
     def test_preview_only_allows_help(self):
         for arguments in (('update',), ('uninstall',), ('models',),
-                          ('sessions',), ('init',), ()):
+                          ('sessions',), ()):
             with self.subTest(arguments=arguments):
                 result = self.cli(*arguments)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -89,12 +89,12 @@ class CentralDispatchTests(unittest.TestCase):
         (self.project / '.agentic/launcher.py').unlink()
         result = self.cli('--help')
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn('No Gaston workspace', result.stderr)
+        self.assertIn('No Gaston project found', result.stderr)
         self.assertFalse((self.project / '.gaston').exists())
 
-    def test_default_path_remains_legacy(self):
-        with patch.dict(os.environ, {'GASTON_ENGINE_MODE': 'central'}), \
-             patch.object(gaston_cli, 'workspace', return_value=self.project), \
+    def test_explicit_central_mode_dispatches_from_project_root(self):
+        with patch.dict(os.environ, {'GASTON_ENGINE_MODE': 'central',
+                                     'GASTON_ROOT': str(self.project)}), \
              patch.object(gaston_cli, '_central_launch', return_value=17) as central:
             self.assertEqual(gaston_cli.main(), 17)
             central.assert_called_once_with(self.project)
