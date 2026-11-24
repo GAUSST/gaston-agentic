@@ -167,6 +167,10 @@ def current(folder: Path) -> list[dict]:
     rows=[];workspace=None;checked=False
     for e in read(folder):
         if not isinstance(e,dict) or not isinstance(e.get('recorded_at'),(int,float)) or e['recorded_at']<boundary:continue
+        scoped=e.get('parameters',{}).get('verification_scope_fingerprints')
+        if scoped is not None:
+            from verification_coordination import fingerprints
+            if not isinstance(scoped,dict) or fingerprints(folder.parent.parent.parent, list(scoped))!=scoped:continue
         if e.get('revision_fingerprint')==expected:rows.append(e);continue
         # Relaxed backend reuse only with a matching full non-document Git fingerprint.
         # No Git baseline, stale configuration or unclassified documents means rerun.

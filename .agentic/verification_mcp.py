@@ -1305,21 +1305,35 @@ def task_verification_plan(task_id):
     return response(result['status'],**{k:v for k,v in result.items() if k!='status'})
 
 
-def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relative_path=None,force=False):
+def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relative_path=None,force=False,*,cancel_event=None):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
     folder=_task_folder(task_id)
     if not folder:return response('blocked',reason='Unknown task')
     import acceptance_audit,evidence_efficiency,task_runtime
     if kind not in acceptance_audit.GATE_TYPES:return response('blocked',reason='Unsupported acceptance check')
     state=__import__('task_runtime').read_record(folder/'state.json')
-    running=orch.active_builders(ROOT)
-    if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required') or running:
-        return response('blocked',blocker='workspace_not_idle',requires_idle_workspace=True,active_builder_tasks=running,
-                        reason='Implementation is active in shared workspace; acceptance requires an idle workspace',
-                        next_action='If this is a pending Lead plan item, defer_work_item with the actual blocker. Use wait_for_builder on the active task once executable independent work is exhausted. Retry the gate after completion; do not mark it done.')
+    if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required'):
+        return response('blocked',blocker='workspace_not_idle',requires_idle_workspace=True,active_builder_tasks=orch.active_builders(ROOT),
+                        reason='This acceptance task is still being implemented; collect completion first')
+    task=task_runtime.read_record(folder/'task.json')
+    if project is None and kind in ('api','backend'):
+        import backend_runner
+        options=backend_runner.discover(ROOT)
+        if len(options)==1:project=options[0]['path']
+    import verification_coordination as coordination
+    if cancel_event is not None and cancel_event.is_set():return response('blocked',reason='Verification cancelled before execution')
+    try:
+        with coordination.reserve(ROOT,kind,project,integrated=bool(task.get('checkpoint_acceptance')),task_id=task_id) as reservation:
+            return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event)
+    except coordination.Busy as exc:
+        return response('blocked',reason=str(exc),requires_idle_workspace=exc.fields['blocker']=='workspace_not_idle',**exc.fields)
+    except (OSError,ValueError) as exc:return response('blocked',reason='Verification coordination: '+str(exc))
+
+
+def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,current_task,reservation,cancel_event):
+    import acceptance_audit,evidence_efficiency,task_runtime
     # Slice checks select concrete changed JUnit test classes automatically;
     # integrated acceptance retains full-suite verification.
-    current_task=task_runtime.read_record(folder/'task.json')
     if kind=='backend' and test_filter is None and current_task.get('work_plan_id') and not current_task.get('checkpoint_acceptance'):
         test_filter=evidence_efficiency.focused_test_selector(ROOT,folder,project)
     before=acceptance_audit.revision_fingerprint(folder)
@@ -1328,7 +1342,7 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
     # checks deliberately run fresh; never infer them from a previous smoke test.
     workspace_before=None
     env_digest=None
-    if kind=='backend':
+    if kind=='backend' and not reservation['parallel_with']:
         env_digest=evidence_efficiency.environment_fingerprint(ROOT,project)
         try:
             import eng,workspace_git
@@ -1383,11 +1397,18 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
         try:
             if workspace_git.fingerprint(ROOT,eng.load_config().get('project'),review_documents=acceptance_audit.declared_review_documents(folder))==workspace_before:params['workspace_fingerprint']=workspace_before
         except (OSError,ValueError,SystemExit):pass
-    if not before or acceptance_audit.revision_fingerprint(folder)!=before:
-        result={**result,'status':'blocked','reason':'Cannot bind the check to unchanged task files; re-check current revision'}
+    if reservation['fingerprints'] is not None:
+        import verification_coordination as coordination
+        params['verification_scope_fingerprints']=reservation['fingerprints']
+        if coordination.fingerprints(ROOT,reservation['read_scope'])!=reservation['fingerprints']:
+            result={**result,'status':'blocked','reason':'Verification source changed during execution; rerun on stable inputs'}
+    if cancel_event is not None and cancel_event.is_set():result={**result,'status':'blocked','reason':'Client cancelled the verification subscription; no acceptance claim'}
+    if not _authorized_delegate() or not before or acceptance_audit.revision_fingerprint(folder)!=before:
+        result={**result,'status':'blocked','reason':'Cannot bind the check to unchanged task files and current Lead; re-check current revision'}
+    params['verification_read_scope']=reservation['read_scope']
     entry=acceptance_audit.record(folder,kind,result,parameters=params)
     return response(result.get('status','blocked'),task_id=task_id,
-                    check_id=entry['id'],kind=kind,evidence=result,
+                    check_id=entry['id'],kind=kind,evidence=result,parallel_with=reservation['parallel_with'],verification_read_scope=reservation['read_scope'],
                     note='Evidence recorded. Use task_acceptance_report for cross-component gaps; only Lead may decide acceptance.')
 
 
@@ -1560,8 +1581,7 @@ def start_lead_implementation(args):
         item={'id':'lead-implementation','owner':'lead','kind':'implement','goal':args.get('goal'),'paths':args.get('paths'),'acceptance_criteria':args.get('acceptance_criteria')}
         pid=orch.create_plan(ROOT,args.get('goal'),[item])['plan_id'];iid='lead-implementation'
         plan,item=orch.select_item(ROOT,pid,iid,'lead','implement')
-    for worker in orch.active_builders(ROOT):
-        if not worker['scope'] or orch.overlaps(item['paths'],worker['scope']):raise ValueError('Lead implementation overlaps the active Builder; use independent paths or wait')
+    orch._scope_conflicts(ROOT,item['paths'])
     with redirect_stdout(sys.stderr):
         tid=eng.new_task(item['goal'],accept=item['acceptance_criteria']);folder=eng.run_dir(tid)
         task=eng.load_json(folder/'task.json');task.update(owner='lead',work_plan_id=pid,work_item_id=iid,write_scope=item['paths']);eng.write_json(folder/'task.json',task)
@@ -1760,6 +1780,18 @@ def record_approved_roadmap(args):
             developer_confirmed=args.get('developer_confirmed'), expected_sha256=args.get('expected_sha256'))
 
 
+def _standalone_verification(kind,project,run):
+    import verification_coordination as coordination
+    try:
+        with coordination.reserve(ROOT,kind,project) as reservation:
+            result=run()
+            if reservation['fingerprints'] is not None and coordination.fingerprints(ROOT,reservation['read_scope'])!=reservation['fingerprints']:
+                return {**result,'status':'blocked','reason':'Verification source changed during execution'}
+            return {**result,'parallel_with':reservation['parallel_with'],'verification_read_scope':reservation['read_scope']}
+    except coordination.Busy as exc:return response('blocked',reason=str(exc),**exc.fields)
+    except (OSError,ValueError) as exc:return response('blocked',reason='Verification coordination: '+str(exc))
+
+
 def lead_checkpoint_tool(args):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
     from session_store import Store
@@ -1813,13 +1845,13 @@ CALLS={
        'environment_status':lambda args:status(),
        'browser_diagnose':lambda args:browser_diagnose(),
        'run_web_smoke':lambda args:run_web_smoke(args.get('visible',False)),
-       'run_project_web_tests':lambda args:run_project_web_tests(args.get('project')),
+       'run_project_web_tests':lambda args:_standalone_verification('web',args.get('project'),lambda:run_project_web_tests(args.get('project'))),
        'start_existing_emulator':lambda args:start_existing_emulator(args.get('name','')),
        'run_maestro_tests':lambda args:run_maestro_tests(args.get('relative_path','.maestro')),
        'finish_mobile_verification':lambda args:finish_mobile_verification(),
        'acceptance_evidence_detail':lambda args:acceptance_evidence_detail(args.get('task_id'),args.get('check_id'),args.get('include_logs',False)),
        'prepare_builder_dependencies':lambda args:prepare_builder_dependencies(args.get('project'),args.get('allow_network',False),args.get('explicit_developer_approval',False),args.get('approval_quote','')),
-       'run_backend_tests':lambda args:run_backend_tests(args.get('project'),args.get('goal','test'),args.get('test_filter'),args.get('offline',False)),
+       'run_backend_tests':lambda args:_standalone_verification('backend',args.get('project'),lambda:run_backend_tests(args.get('project'),args.get('goal','test'),args.get('test_filter'),args.get('offline',False))),
        'run_http_smoke':lambda args:run_http_smoke(),
        'run_local_api_checks':lambda args:run_local_api_checks(args.get('relative_path'))}
 
@@ -1880,6 +1912,10 @@ def handle(request, *, cancel_event=None, progress=None):
                 out=response('blocked',reason='This MCP instance no longer belongs to the active Engineering Lead.')
             elif name=='wait_for_builder' and cancel_event is not None:
                 out=wait_for_builder(args.get('task_id'),args.get('timeout_seconds',BUILDER_WAIT_SECONDS),cancel_event=cancel_event,progress=progress)
+            elif name=='run_task_acceptance_check' and cancel_event is not None:
+                out=run_task_acceptance_check(args.get('task_id'),args.get('kind'),args.get('project'),args.get('test_filter'),args.get('relative_path'),args.get('force',False),cancel_event=cancel_event)
+            elif name in ('prepare_builder_dependencies','verify_delegated_backend_task','finalize_delegated_task','prepare_checkpoint_acceptance','review_work_slice','validate_evolution') and __import__('verification_coordination').active(ROOT):
+                out=response('blocked',blocker='verification_active',reason='Collect active verification before starting another gate or integrated review')
             elif name=='validate_evolution' and cancel_event is not None:
                 if not _authorized_delegate():out=response('blocked',reason='Lead MCP authorization missing')
                 else:
@@ -1963,10 +1999,10 @@ def main():
                         if event:event.set()
                     continue
                 if 'id' not in req:continue
-                if req.get('method')=='tools/call' and req.get('params',{}).get('name') in ('wait_for_builder','validate_evolution'):
+                if req.get('method')=='tools/call' and req.get('params',{}).get('name') in ('wait_for_builder','validate_evolution','run_task_acceptance_check','run_project_web_tests','run_backend_tests'):
                     event=Event()
                     with waits_lock:waits[req['id']]=event
-                    Thread(target=background_wait,args=(req,event),daemon=req.get('params',{}).get('name')!='validate_evolution').start()
+                    Thread(target=background_wait,args=(req,event),daemon=req.get('params',{}).get('name')=='wait_for_builder').start()
                 else:reply(req)
             except (ValueError,TypeError) as exc:
                 send({'jsonrpc':'2.0','id':None,'error':{'code':-32700,'message':str(exc)}})
