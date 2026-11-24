@@ -46,8 +46,12 @@ def _central_launch(root: Path) -> int:
             raise RuntimeError('Central preview requires installed engine and workspace toolkit to have the same version')
     # Until hooks, MCP helpers and project state move to central ownership,
     # central preview is read-only. Never execute incomplete runtime flows.
-    if not (adapter.exists() or adapter.is_symlink()) and sys.argv[1:] != ['--help']:
-        raise RuntimeError('Explicit legacy workspace migration is required for central execution')
+    if not (adapter.exists() or adapter.is_symlink()):
+        if sys.argv[1:] != ['--help']:
+            raise RuntimeError('Explicit legacy workspace migration is required for central execution')
+        journal = root / '.agentic/local/update/journal.json'
+        if journal.is_symlink() or journal.exists():
+            raise RuntimeError('Interrupted update detected; use legacy mode to recover before central preview')
 
     spec = util.find_spec('gaston_engine')
     if spec is None or spec.origin is None:
@@ -220,8 +224,10 @@ def main():
                     update_root, update_kind = find_project(start)
                 except ValueError:
                     update_root, update_kind = start, 'new'
-                if mode == 'central' or update_kind != 'legacy':
+                if update_kind != 'legacy':
                     return _global_update(arguments[1:], update_root)
+                if mode == 'central':
+                    raise RuntimeError('Explicit legacy workspace migration is required for central execution')
             if mode == 'central':
                 if arguments in (['init'], ['init', '--setup']):
                     return _central_init()
