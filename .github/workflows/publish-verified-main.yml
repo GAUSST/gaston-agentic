@@ -1,0 +1,119 @@
+name: Publish verified main release
+on:
+  workflow_run:
+    workflows: ["Gaston native CLI validation"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+concurrency:
+  group: gaston-signed-release-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: >-
+      github.repository == 'GAUSST/gaston-agentic' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+      - name: Check current verified main and release identity
+        id: candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+          if [[ "$current" != "$VERIFIED_SHA" ]]; then
+            echo "A newer main commit exists; skip stale CI result."
+            exit 0
+          fi
+          test "$(git rev-parse HEAD)" = "$VERIFIED_SHA"
+          python - <<'PY'
+          import json, os, pathlib, re, subprocess, tomllib
+          manifest = json.loads(pathlib.Path(".agentic/manifest.json").read_text())
+          tag = manifest["release"]
+          assert re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", tag)
+          assert manifest["build"] == tag[1:]
+          assert tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"] == tag[1:]
+          latest = json.loads(subprocess.check_output(
+              ["gh", "api", "repos/"+os.environ["REPOSITORY"]+"/releases/latest"], text=True))
+          version = lambda value: tuple(map(int, value.removeprefix("v").split(".")))
+          if version(tag) <= version(latest["tag_name"]):
+              print("No newer version to publish:", tag)
+          else:
+              with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+                  out.write("tag="+tag+"\n")
+          PY
+      - name: Sign candidate tag if needed and verify publisher signature
+        if: steps.candidate.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+          SIGNING_KEY: ${{ secrets.GASTON_RELEASE_SIGNING_KEY }}
+          SIGNING_PASSPHRASE: ${{ secrets.GASTON_RELEASE_SIGNING_PASSPHRASE }}
+          SIGNING_FINGERPRINT: ${{ vars.GASTON_RELEASE_SIGNING_FINGERPRINT }}
+          SIGNING_EMAIL: ${{ vars.GASTON_RELEASE_SIGNING_EMAIL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$VERIFIED_SHA"
+          # Existing tags are immutable. Never replace, force-push or sign a
+          # commit that did not pass the named validation workflow.
+          if ! git show-ref --verify --quiet "refs/tags/$TAG"; then
+            if [[ -z "$SIGNING_KEY" || -z "$SIGNING_FINGERPRINT" || -z "$SIGNING_EMAIL" ]]; then
+              echo "::error::One-time release signing configuration is missing. See docs/RELEASE_AUTOMATION.md."
+              exit 1
+            fi
+            export GNUPGHOME="$(mktemp -d)"
+            chmod 700 "$GNUPGHOME"
+            wrapper="$(mktemp)"
+            trap 'rm -f "$wrapper"; gpgconf --kill all; rm -rf "$GNUPGHOME"' EXIT
+            printf '%s' "$SIGNING_KEY" | gpg --batch --import
+            unset SIGNING_KEY
+            cat > "$wrapper" <<'GPG'
+          #!/usr/bin/env bash
+          exec gpg --batch --pinentry-mode loopback --passphrase-fd 3 "$@" 3<<<"$SIGNING_PASSPHRASE"
+          GPG
+            chmod 700 "$wrapper"
+            git -c user.name='Gaston Release' -c user.email="$SIGNING_EMAIL" \
+              -c user.signingkey="$SIGNING_FINGERPRINT" -c gpg.program="$wrapper" \
+              -c gpg.format=openpgp tag -s "$TAG" "$VERIFIED_SHA" -m "Gaston $TAG"
+            git push origin "refs/tags/$TAG"
+            unset SIGNING_PASSPHRASE
+          fi
+          # The existing client requires GitHub's valid verified annotated tag.
+          # Check that exact remote object before publishing its release.
+          ref="$(gh api "repos/$REPOSITORY/git/ref/tags/$TAG")"
+          test "$(jq -r .object.type <<<"$ref")" = tag
+          obj="$(gh api "repos/$REPOSITORY/git/tags/$(jq -r .object.sha <<<"$ref")")"
+          jq -e --arg tag "$TAG" --arg sha "$VERIFIED_SHA" \
+            '.tag == $tag and .object.type == "commit" and .object.sha == $sha and .verification.verified == true and .verification.reason == "valid"' \
+            <<<"$obj" > /dev/null
+      - name: Publish signed release
+        if: steps.candidate.outputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          VERIFIED_SHA: ${{ github.event.workflow_run.head_sha }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$REPOSITORY/git/ref/heads/main" --jq .object.sha)" = "$VERIFIED_SHA"
+          gh release create "$TAG" --repo "$REPOSITORY" --verify-tag --generate-notes --title "Gaston $TAG" --latest
