@@ -1,4 +1,6 @@
-# Gaston Agentic — v1.6.0
+# Gaston Agentic — v1.6.1
+
+**[Guide d’installation et d’utilisation (FR)](docs/GUIDE_FR.md)**
 
 Gaston is a **project-agnostic** engineering tool. It discovers the current
 project's stack, routes, tests, workflow, and conventions; no application name
@@ -8,11 +10,11 @@ implementation: explicit system boundaries, invariants, tradeoffs, failure modes
 contract compatibility and evidence-backed review, scaled to actual project risk.
 
 The established command contract is unchanged: `dev init`, `dev`, `dev models`,
-`dev sessions`, `dev uninstall`. v1.5.1 adds **`dev update`** and a cached,
-non-blocking, at-most-daily notification on `dev` startup. Updates are never
-installed automatically. The official public source repository is **GAUSST/gaston-agentic**;
-`dev update` remains unconfigured until the publisher is explicitly trusted once
-with `dev update --set-repo GAUSST/gaston-agentic`. See
+`dev sessions`, `dev uninstall` and `dev update`. Updates are never installed
+automatically. For central installations, the official publisher is pinned to
+**GAUSST/gaston-agentic** and `dev update` checks for a newer signed release,
+verifies it and asks for explicit approval before global activation. Legacy
+workspace updates retain their separate publisher configuration. See
 `docs/UPDATES.md` for release, integrity, testing, and rollback details.
 
 **Platform status:** the explicit per-user installer creates an isolated Python environment and registers the native `dev` entry point. It requires Python 3.10+ and network access for build/runtime dependencies unless a compatible local wheel and dependencies are available. Linux, macOS and Windows provider integration must be certified separately.

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.0",
+  "release": "v1.6.1",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "d60ad7185be86b6738c28104b327e71ad550cf79e50410c1b8c27ef7840e216f",
@@ -92,18 +92,18 @@
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "15bc681b7af988820a219d3bdede340f98fdbf7649b3605adc49488c39a33051",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "4ac929d6f96de45f8325202bf4ac2ebe8d9737d3158762ec297dd95ef8f2b8af",
+    "README.md": "b15e2de44abc7f5734c3fe70f546db88731c5d62a8bd81d41999ef8174df7a3b",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "cf68200fd9600abf9703649e9ec3c65d047be34af42872a8f6c24beb562106b9",
     "gaston_cli.py": "8db30efec391720c5d402b65411272469ed1c39ef7dba9f5db7f94191e03e7e8",
-    "pyproject.toml": "31a9f0d63e400bc04e66dc9a6c93ed4061c8b8dc4d8db0adb8e749ff41131c4e",
+    "pyproject.toml": "9f7d1bf49c802779bfdda3c641e1ae0ff1e7472427dba9902d4a5918952d1273",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
-    "docs/UPDATES.md": "0123b6fece2ea9c041c80551fe47b221923be6541f59781cba77dc1463e7022d",
+    "docs/UPDATES.md": "5e3632501b640804e44dd06d90e23f49081c12567d4bd273077075ea608f665e",
     ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34",
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
     ".agentic/project_layout.py": "52c078efd1a34801874b75bf1d92dcc9b92f254c073d22a423810612ce2ec8c4",
@@ -120,7 +120,8 @@
     ".agentic/test_central_migration.py": "07b74aad5fbf8d664cf98e031b780ef36067e153a8bd1171da57dbd66d155045",
     ".agentic/test_central_update.py": "86f62cc92c179a8ea686f093ea012c7bf0b6f70a258d90bc11e78ca45e048154",
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
-    ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b"
+    ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
+    "docs/GUIDE_FR.md": "4b907a507becd7583bc1d8e66e1e01f23f17cc1e7480de3efae297e57be4d38c"
   },
-  "build": "1.6.0"
+  "build": "1.6.1"
 }
