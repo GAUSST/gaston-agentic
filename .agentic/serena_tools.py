@@ -4,6 +4,7 @@ No global MCP registration or auto-download at runtime. Gaston retains edit
 scope and verification controls; native tools remain the fallback.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, runtime_script, central_mode
 import json
 import os
 from pathlib import Path
@@ -17,7 +18,7 @@ SEMANTIC_TOOLS = frozenset({'get_symbols_overview','find_symbol','find_referenci
 
 
 def executable(root):
-    path=Path(root)/'.agentic/local/serena-venv'/('Scripts/serena.exe' if os.name=='nt' else 'bin/serena')
+    path=project_state(root)/'local/serena-venv'/('Scripts/serena.exe' if os.name=='nt' else 'bin/serena')
     if path.is_file() and (os.name=='nt' or os.access(path,os.X_OK)):return str(path)
     return shutil.which('serena')
 
@@ -35,7 +36,7 @@ def setup(root, *, approved=False):
     if supported(binary):return True
     uv=shutil.which('uv')
     if not approved or not uv:return False
-    folder=root/'.agentic/local/serena-venv'
+    folder=project_state(root)/'local/serena-venv'
     try:
         # This is a workspace-private environment, never a global uv tool.
         if subprocess.run([uv,'venv','--python','3.13',str(folder)],timeout=180).returncode:return False
@@ -48,7 +49,7 @@ def setup(root, *, approved=False):
 def config(root, provider):
     binary=executable(root)
     if not binary:return None
-    return {'type':'stdio','command':sys.executable,'args':[str(Path(root)/'.agentic/serena_tools.py'),provider,binary]}
+    return {'type':'stdio','command':sys.executable,'args':[str(runtime_script('serena_tools.py') if central_mode() else Path(root)/'.agentic/serena_tools.py'),provider,binary]}
 
 
 def codex_args(root):
@@ -96,7 +97,7 @@ def filter_response(msg, method):
 
 def record_usage(root,provider,tool,outcome,output_bytes,elapsed):
     if tool not in SEMANTIC_TOOLS:return
-    path=Path(root)/'.agentic/local/serena-usage.jsonl'
+    path=project_state(root)/'local/serena-usage.jsonl'
     try:
         path.parent.mkdir(parents=True,exist_ok=True)
         row={'provider':provider,'tool':tool,'outcome':outcome,'output_bytes':output_bytes,'elapsed_ms':round(elapsed*1000),'recorded_at':time.time()}
@@ -109,7 +110,7 @@ def record_usage(root,provider,tool,outcome,output_bytes,elapsed):
 
 def usage_summary(root):
     from collections import Counter
-    path=Path(root)/'.agentic/local/serena-usage.jsonl';counts=Counter();outcomes=Counter();size=0
+    path=project_state(root)/'local/serena-usage.jsonl';counts=Counter();outcomes=Counter();size=0
     if path.is_file() and not path.is_symlink():
         try:
             with path.open() as stream:
@@ -123,7 +124,7 @@ def usage_summary(root):
 
 
 def main():
-    root=Path(__file__).resolve().parent.parent
+    root=project_root()
     if len(sys.argv)!=3 or sys.argv[1] not in ('claude','codex'):return 2
     binary=sys.argv[2]
     if not supported(binary):return 2

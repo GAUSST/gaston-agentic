@@ -46,8 +46,12 @@ def _central_launch(root: Path) -> int:
             raise RuntimeError('Central preview requires installed engine and workspace toolkit to have the same version')
     # Until hooks, MCP helpers and project state move to central ownership,
     # central preview is read-only. Never execute incomplete runtime flows.
-    if sys.argv[1:] != ['--help']:
-        raise RuntimeError('Central preview supports dev --help only; use GASTON_ENGINE_MODE=legacy for all other commands')
+    if not (adapter.exists() or adapter.is_symlink()):
+        if sys.argv[1:] != ['--help']:
+            raise RuntimeError('Explicit legacy workspace migration is required for central execution')
+        journal = root / '.agentic/local/update/journal.json'
+        if journal.is_symlink() or journal.exists():
+            raise RuntimeError('Interrupted update detected; use legacy mode to recover before central preview')
 
     spec = util.find_spec('gaston_engine')
     if spec is None or spec.origin is None:
@@ -78,7 +82,20 @@ def _central_init() -> int:
         print('Gaston central project adapter created: ' + str(root / '.gaston/project.json'))
     else:
         print('Gaston central project adapter already exists: ' + str(root / '.gaston/project.json'))
-    print('Central engine setup is a preview. Hooks, sessions and migrations are not activated yet.')
+    if sys.stdin.isatty() or '--setup' in sys.argv[1:]:
+        os.environ['GASTON_ENGINE_PROJECT'] = str(root)
+        os.environ['GASTON_ENGINE_MODE'] = 'central'
+        from importlib import util
+        spec = util.find_spec('gaston_engine')
+        if spec is None or spec.origin is None:
+            raise RuntimeError('Installed engine unavailable for provider setup')
+        directory = str(Path(spec.origin).resolve().parent)
+        if directory not in sys.path:
+            sys.path.insert(0, directory)
+        from gaston_engine.eng import main as start_engine
+        start_engine(['init', '--non-interactive'] if not sys.stdin.isatty() else ['init'])
+    else:
+        print('Project adapter initialized. Run dev init --setup to configure providers.')
     return 0
 
 
@@ -93,8 +110,103 @@ def _central_uninstall(root: Path) -> int:
     return 0
 
 
+def _central_module(name: str, root: Path | None = None):
+    """Import trusted central runtime code, never a shadow project package."""
+    from importlib import util
+    spec = util.find_spec('gaston_engine')
+    if spec is None or spec.origin is None:
+        raise RuntimeError('Globally installed Gaston runtime is missing')
+    engine_dir = Path(spec.origin).resolve().parent
+    if root is not None and engine_dir.is_relative_to(root):
+        raise RuntimeError('Refusing project-supplied Gaston runtime code')
+    if str(engine_dir) not in sys.path:
+        sys.path.insert(0, str(engine_dir))
+    import importlib
+    return importlib.import_module('gaston_engine.' + name)
+
+
+def _global_update(args: list[str], root: Path | None = None) -> int:
+    module = _central_module('central_update', root)
+    return module.main(args)
+
+
+def _central_migrate(root: Path) -> int:
+    module = _central_module('central_migration', root)
+    return module.main(root)
+
+
+def _managed_bootstrap() -> int | None:
+    """Dispatch through a verified, immutable global engine release when present.
+
+    This stable entry point is installed once via pip/pipx. Later signed updates
+    activate a separate version folder without rewriting a running package or
+    touching a project. A corrupt pointer fails closed instead of falling back
+    to unverified source.
+    """
+    if os.environ.get('GASTON_ACTIVE_VERSION'):
+        return None
+    import hashlib
+    import importlib.util
+    import json
+    import re
+    folder = Path(os.environ.get('GASTON_GLOBAL_HOME',
+                                 str(Path.home()/'.local/share/gaston'))).expanduser()
+    if not folder.is_absolute():
+        raise RuntimeError('Invalid global Gaston runtime directory')
+    pointer = folder/'current.json'
+    if pointer.is_symlink():
+        raise RuntimeError('Refusing linked engine-version pointer')
+    if not pointer.exists():
+        return None
+    if pointer.stat().st_size > 4096:
+        raise RuntimeError('Oversized engine-version pointer')
+    try:
+        state = json.loads(pointer.read_text(encoding='utf-8'))
+    except (OSError, ValueError) as exc:
+        raise RuntimeError('Corrupt global Gaston engine pointer') from exc
+    tag = state.get('tag') if isinstance(state, dict) else None
+    if not isinstance(tag, str) or not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag):
+        raise RuntimeError('Invalid global Gaston release pointer')
+    base = folder.resolve()
+    version = base/'versions'/tag
+    engine = version/'gaston_engine'
+    cli = version/'gaston_cli.py'
+    if any(p.is_symlink() for p in (version, engine, cli, engine/'manifest.json')):
+        raise RuntimeError('Linked engine release paths are forbidden')
+    if not version.is_dir() or not cli.is_file():
+        raise RuntimeError('Active Gaston release is missing')
+    raw = (engine/'manifest.json').read_bytes()
+    if hashlib.sha256(raw).hexdigest() != state.get('manifest_sha256'):
+        raise RuntimeError('Active Gaston release manifest checksum mismatch')
+    manifest = json.loads(raw)
+    if manifest.get('release') != tag or manifest.get('build') != tag.removeprefix('v'):
+        raise RuntimeError('Active Gaston release version mismatch')
+    for rel, expected in manifest.get('files', {}).items():
+        if rel == 'gaston_cli.py':
+            file = cli
+        elif isinstance(rel, str) and rel.startswith('.agentic/') and rel.endswith(('.py', '.md')):
+            file = engine/rel[len('.agentic/'):]
+        else:
+            continue
+        if file.is_symlink() or not file.is_file() or hashlib.sha256(file.read_bytes()).hexdigest() != expected:
+            raise RuntimeError('Active Gaston engine integrity failure: ' + str(rel))
+    # Resolve only from verified, user-local versioned source, never from
+    # application files. Existing CLI commands are delegated unchanged.
+    sys.path.insert(0, str(version))
+    os.environ['GASTON_ACTIVE_VERSION'] = tag
+    spec = importlib.util.spec_from_file_location('_gaston_active_cli', cli)
+    if spec is None or spec.loader is None:
+        raise RuntimeError('Cannot load verified Gaston CLI')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.main()
+
+
 def main():
     try:
+        managed = _managed_bootstrap()
+        if managed is not None:
+            return managed
         mode = os.environ.get('GASTON_ENGINE_MODE', 'auto').strip().lower()
         if mode not in ('auto', 'legacy', 'central'):
             raise ValueError('GASTON_ENGINE_MODE must be auto, legacy or central')
@@ -105,23 +217,38 @@ def main():
             from gaston_engine.project_layout import find_project
             start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
             arguments = sys.argv[1:]
+            # A central update is global and may be invoked outside any
+            # project. Existing legacy workspaces retain their older updater.
+            if arguments and arguments[0] == 'update':
+                try:
+                    update_root, update_kind = find_project(start)
+                except ValueError:
+                    update_root, update_kind = start, 'new'
+                if update_kind != 'legacy':
+                    return _global_update(arguments[1:], update_root)
+                if mode == 'central':
+                    raise RuntimeError('Explicit legacy workspace migration is required for central execution')
             if mode == 'central':
-                if arguments == ['init']:
+                if arguments in (['init'], ['init', '--setup']):
                     return _central_init()
                 root, kind = find_project(start)
+                if kind == 'legacy' and arguments == ['migrate']:
+                    return _central_migrate(root)
                 if kind == 'central' and arguments == ['uninstall']:
                     return _central_uninstall(root)
                 return _central_launch(root)
 
-            root, kind = find_project(start, allow_new=arguments == ['init'])
-            if kind == 'new' and arguments == ['init']:
+            root, kind = find_project(start, allow_new=arguments in (['init'], ['init', '--setup']))
+            if kind == 'new' and arguments in (['init'], ['init', '--setup']):
                 return _central_init()
             if kind == 'central':
-                if arguments == ['init']:
+                if arguments in (['init'], ['init', '--setup']):
                     return _central_init()
                 if arguments == ['uninstall']:
                     return _central_uninstall(root)
                 return _central_launch(root)
+            if kind == 'legacy' and arguments == ['migrate']:
+                return _central_migrate(root)
 
             # A legacy project stays on its established runtime and is never
             # silently initialized or migrated into the new project layout.

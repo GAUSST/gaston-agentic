@@ -5,6 +5,7 @@ Hook handlers do no model calls and take no action on application code.
 The two registered session IDs in the local registry are the ONLY allowlist.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, runtime_script, central_mode
 import argparse
 import datetime as dt
 import hashlib
@@ -21,9 +22,9 @@ try:
 except ImportError:
     tomllib = None
 
-ROOT = Path(__file__).resolve().parent.parent
-LOCAL = ROOT / '.agentic' / 'local' / 'native-hooks'
-REGISTRY = ROOT / '.agentic' / 'local' / 'sessions.json'
+ROOT = project_root()
+LOCAL = project_state(ROOT) / 'local' / 'native-hooks'
+REGISTRY = project_state(ROOT) / 'local' / 'sessions.json'
 SIGNAL = 'AGENTIC_FEEDBACK_READY'
 REVIEW_SIGNAL = 'AGENTIC_REVIEW_READY'
 
@@ -64,7 +65,7 @@ def allowed(provider: str, event: dict) -> bool:
 def claude_is_reviewer() -> bool:
     """Backward-compatible helper; event handlers use exact registered role."""
     try:
-        cfg=json.loads((ROOT/'.agentic/config.json').read_text(encoding='utf8'))
+        cfg=json.loads((project_state(ROOT)/'config.json').read_text(encoding='utf8'))
         return cfg.get('preferences',{}).get('reviewer','claude')=='claude'
     except (OSError,ValueError,TypeError): return False
 
@@ -187,7 +188,7 @@ def claude_write_guard_configured(root: Path) -> bool:
             for hook in group.get('hooks', []):
                 from platform_compat import parse_command
                 args = parse_command(hook.get('command', ''))
-                if hook.get('type') == 'command' and args[-2:] == [str(root / '.agentic/native_hooks.py'), 'claude']:
+                if hook.get('type') == 'command' and args[-2:] == [str(runtime_script('native_hooks.py') if central_mode() else root / '.agentic/native_hooks.py'), 'claude']:
                     return True
     except (OSError, ValueError, TypeError, AttributeError):
         pass
@@ -294,7 +295,7 @@ def schedule_worker():
     logfile = LOCAL / 'worker.log'
     # No shell, no network or credential handling by this helper itself.
     with logfile.open('a', encoding='utf-8') as log:
-        subprocess.Popen([sys.executable, str(ROOT / '.agentic' / 'hook_worker.py')], cwd=ROOT, stdin=subprocess.DEVNULL,
+        subprocess.Popen([sys.executable, str(runtime_script('hook_worker.py') if central_mode() else ROOT / '.agentic' / 'hook_worker.py')], cwd=ROOT, stdin=subprocess.DEVNULL,
                          stdout=log, stderr=log, **__import__('platform_compat').popen_kwargs())
 
 
@@ -346,7 +347,7 @@ def install_native_hooks(root: Path, *, approve: bool = False) -> bool:
         raise ValueError('Hook installer must run from the kit project root')
     if not approve:
         return False
-    script = str(ROOT / '.agentic' / 'native_hooks.py')
+    script = str(runtime_script('native_hooks.py') if central_mode() else ROOT / '.agentic' / 'native_hooks.py')
     selected = selected_providers(root)
     for provider, target in (
         ('codex', ROOT / '.codex' / 'hooks.json'),
@@ -372,7 +373,7 @@ def install_native_hooks(root: Path, *, approve: bool = False) -> bool:
                 sub = entry.get('hooks', [])
                 if not isinstance(sub, list): continue
                 sub[:] = [h for h in sub if not (isinstance(h, dict) and
-                    (str(ROOT / '.agentic' / 'native_hooks.py') in str(h.get('command', '')))
+                    (str(runtime_script('native_hooks.py') if central_mode() else ROOT / '.agentic' / 'native_hooks.py') in str(h.get('command', '')))
                     and str(h.get('command','')).strip().endswith(' '+provider))]
             # Remove empty groups created from older kit hook entries.
             entries[:] = [e for e in entries if isinstance(e, dict) and e.get('hooks')]
@@ -414,7 +415,7 @@ def codex_trust_status(root: Path = ROOT, *, home: Path | None = None) -> dict:
 
 def selected_providers(root: Path) -> set[str]:
     try:
-        cfg = json.loads((Path(root) / '.agentic' / 'config.json').read_text(encoding='utf-8'))
+        cfg = json.loads((project_state(root) / 'config.json').read_text(encoding='utf-8'))
         prefs = cfg.get('preferences', {})
         return {p for p in (prefs.get('builder','codex'), prefs.get('reviewer','claude'))
                 if p in ('codex', 'claude')}
@@ -423,7 +424,7 @@ def selected_providers(root: Path) -> set[str]:
 
 
 def installed(root: Path) -> bool:
-    script = str(Path(root).resolve() / '.agentic' / 'native_hooks.py')
+    script = str(runtime_script('native_hooks.py') if central_mode() else Path(root).resolve() / '.agentic' / 'native_hooks.py')
     selected = selected_providers(root)
     for provider, name in (('codex', '.codex/hooks.json'), ('claude', '.claude/settings.local.json')):
         if provider not in selected:

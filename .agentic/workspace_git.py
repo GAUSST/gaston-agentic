@@ -12,7 +12,7 @@ from pathlib import Path
 import shutil
 import subprocess
 
-EXCLUDED = {'.git', '.agentic', '.claude', '.agents', '.dart_tool', 'node_modules',
+EXCLUDED = {'.git', '.agentic', '.gaston', '.claude', '.agents', '.dart_tool', 'node_modules',
             'build', 'dist', '.gradle', '.idea', 'target', '.venv', 'venv'}
 MAX_UNTRACKED_BYTES = 15 * 1024 * 1024
 

@@ -4,6 +4,7 @@ Do not treat an uninspectable process as dead. Lock files are never used for
 arbitrary workspace paths; callers must validate their scope and ownership.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 from contextlib import contextmanager
 import os
 from pathlib import Path
@@ -182,7 +183,7 @@ def protect_workspace_local(root: Path) -> None:
     if not WINDOWS:return
     import csv
     from io import StringIO
-    local=Path(root).resolve()/'.agentic'/'local'
+    local=project_state(root)/'local'
     if local.is_symlink():raise RuntimeError('Linked Gaston runtime state is unsafe')
     local.mkdir(parents=True,exist_ok=True)
     try:

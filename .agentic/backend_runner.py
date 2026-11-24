@@ -6,6 +6,7 @@ build configuration. Maven/Gradle builds can execute project-defined plugins;
 only run against a trusted developer workspace, never an untrusted repository.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import os
 from pathlib import Path
 import re
@@ -27,7 +28,7 @@ def discover(root: Path) -> list[dict]:
     """Discover only build roots, skipping local/generated dependency trees."""
     root = Path(root).resolve()
     result = []
-    ignore = {'.git','.agentic','.m2','node_modules','target','build','.gradle','.dart_tool', '.venv'}
+    ignore = {'.git','.agentic','.gaston','.m2','node_modules','target','build','.gradle','.dart_tool', '.venv'}
     for current, dirs, files in os.walk(root, followlinks=False):
         here = Path(current)
         depth = len(here.relative_to(root).parts)
@@ -188,7 +189,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
     if goal=='test-compile' and test_filter is not None:return {'status':'blocked','reason':'Compile-only gate has no test selector'}
     if test_filter is not None and (not isinstance(test_filter,str) or not SAFE_TEST.fullmatch(test_filter)):
         return {'status':'blocked','reason':'Test selector must be a safe Java test-class pattern'}
-    cache = root/'.agentic'/'local'/'backend-dependencies'
+    cache = project_state(root)/'local'/'backend-dependencies'
     try:
         cache.mkdir(parents=True,exist_ok=True)
     except OSError as exc:
@@ -280,7 +281,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
     # local, ignored logs are mode 0600; no application source is modified.
     logs=None
     try:
-        directory_logs=root/'.agentic/local/backend-logs'
+        directory_logs=project_state(root)/'local/backend-logs'
         directory_logs.mkdir(parents=True,exist_ok=True,mode=0o700)
         log_file=directory_logs/(secrets.token_hex(12)+'.log')
         fd=os.open(log_file,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600)

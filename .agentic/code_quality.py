@@ -1,5 +1,6 @@
 """Lead semantic review for current source; static hints are not quality scores."""
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 
 import ast
 import io
@@ -166,7 +167,7 @@ RELEASE_DOC = re.compile(r'(?i)^release[_-]v?(\d+)(?:[._-]\d+)*\.(?:md|rst|txt)$
 def obsolete_document_hints(root, paths):
     """Versioned release documents are review candidates, never generic deletion targets."""
     import evolution
-    manifest = task_runtime.read_record(root / '.agentic/manifest.json')
+    manifest = task_runtime.read_record(runtime_manifest() if central_mode() else root / '.agentic/manifest.json')
     version = re.fullmatch(r'v(\d+)', str(manifest.get('release', '')))
     results = []
     for p in paths:

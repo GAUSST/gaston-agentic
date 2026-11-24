@@ -4,6 +4,7 @@ No LLM poll loop and no guessed token/cost figures. Linux pidfds wake when a
 specific worker exits; other platforms use a bounded local process check.
 """
 from __future__ import annotations
+from project_layout import project_state_name
 import json
 import os
 from pathlib import Path
@@ -77,7 +78,7 @@ def wait_worker(folder: Path, *, timeout_seconds: int=BUILDER_WAIT_SECONDS, canc
     """One bounded wait; reread attempt identity and reconcile before reporting exit."""
     from session_store import process_state
     folder=Path(folder)
-    root=folder.parent.parent.parent if folder.parent.name=='runs' and folder.parent.parent.name=='.agentic' else None
+    root=folder.parent.parent.parent if folder.parent.name=='runs' and folder.parent.parent.name==project_state_name() else None
     timeout_seconds=max(1,min(int(timeout_seconds),BUILDER_WAIT_SECONDS))
     started=time.monotonic(); last_progress=started
     fd=None; watched=None

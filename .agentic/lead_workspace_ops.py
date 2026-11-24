@@ -6,6 +6,7 @@ production URLs, or unrestricted file writes. All operations are workspace-local
 and have explicit allowlists. This is an operational helper, not a general agent.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 
 import json
 import os
@@ -19,7 +20,7 @@ import sys
 import time
 from urllib.parse import urlparse
 
-ROOT_DIR = Path(__file__).resolve().parent.parent
+ROOT_DIR = project_root()
 MAX_OUTPUT = 12000
 SKIP_DIRS = {'.git', '.hg', '.svn', 'node_modules', '.venv', 'venv', '.gradle', '.idea',
              '.dart_tool', '.next', 'dist', 'build', 'target', '__pycache__', '.gaston-dev-db'}
@@ -105,7 +106,7 @@ def inspect(root, action='overview', relative_path='', pattern='', max_results=8
             return response('blocked',reason='Provide 2–90 characters for a filename search')
         query=pattern.casefold(); records=[]; dirs_seen=0
         for base, dirs, files in os.walk(folder, followlinks=False):
-            dirs[:]=[d for d in dirs if d not in SKIP_DIRS and d not in ('.agentic', '.claude', '.codex')
+            dirs[:]=[d for d in dirs if d not in SKIP_DIRS and d not in ('.agentic', '.gaston', '.claude', '.codex')
                      and not (Path(base)/d).is_symlink()]
             dirs_seen+=1
             if dirs_seen>800:break
@@ -233,7 +234,7 @@ def _identity(pid):
 
 
 def _preview_dir(root):
-    return Path(root).resolve()/'.agentic'/'local'/'preview'
+    return project_state(root)/'local'/'preview'
 
 
 def _preview_owner(root):
@@ -317,7 +318,7 @@ def preview(root, action='status', relative_path='', port=0):
         selected=_path(root,relative_path)
         if not selected.is_dir() or not (selected/'index.html').is_file():
             return response('blocked',reason='Select a workspace directory containing index.html')
-        if '.git' in selected.parts or '.agentic' in selected.relative_to(root).parts:
+        if '.git' in selected.parts or any(n in selected.relative_to(root).parts for n in ('.agentic','.gaston')):
             return response('blocked',reason='Preview may not serve private toolkit or Git directories')
         directory.mkdir(parents=True,exist_ok=True)
         if not directory.resolve().is_relative_to(root) or directory.is_symlink() or (directory/'owner.json').is_symlink():
@@ -382,7 +383,7 @@ def _serve_preview(directory,port,state_file):
 def housekeeping(root, action='inspect', apply=False, requested_by_user=''):
     """Only old known-temp files, never entire directories or test caches."""
     try:
-        base=Path(root).resolve()/'.agentic'/'local'
+        base=project_state(root)/'local'
         if action not in ('inspect','cleanup') or (action=='cleanup' and (apply is not True or not isinstance(requested_by_user,str) or not requested_by_user.strip())):
             return response('blocked',reason='Choose inspect, or cleanup with explicit user request and apply=true')
         if not base.is_dir():return response('ready',eligible=[],removed=[])
@@ -420,11 +421,11 @@ def note(root, name, content, task_id='', mode='append'):
         if task_id:
             if not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):
                 return response('blocked',reason='Invalid task ID')
-            task=root/'.agentic'/'runs'/task_id
+            task=project_state(root)/'runs'/task_id
             if not (task/'task.json').is_file() or task.is_symlink():
                 return response('blocked',reason='Unknown Builder task')
             dest=task/'lead-notes'
-        else:dest=root/'.agentic'/'local'/'lead-notes'
+        else:dest=project_state(root)/'local'/'lead-notes'
         dest.mkdir(parents=True,exist_ok=True)
         if not dest.resolve().is_relative_to(root) or dest.is_symlink():
             return response('blocked',reason='Unsafe notes directory')

@@ -1,5 +1,6 @@
 """Evidence-based local learning and code-health candidates; no extra AI calls."""
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 import ast
 import hashlib
 import os
@@ -32,7 +33,7 @@ def collect(root, *, limit=100):
     root=Path(root); base=evo.store(root); path=base/'observations.json'
     with evo.locked(root):
         old=read_record(path);obs=old.get('tasks',{}) if isinstance(old.get('tasks'),dict) else {}
-        folders=[f for f in (root/'.agentic/runs').glob('*') if re.fullmatch(r'[a-z0-9-]{8,120}',f.name) and not f.is_symlink() and f.is_dir() and (f/'state.json').is_file()]
+        folders=[f for f in (project_state(root)/'runs').glob('*') if re.fullmatch(r'[a-z0-9-]{8,120}',f.name) and not f.is_symlink() and f.is_dir() and (f/'state.json').is_file()]
         folders.sort(key=lambda p:(p/'state.json').stat().st_mtime,reverse=True)
         for f in folders[:limit]:
             inputs=[f/n for n in ('state.json','task.json','worker.json','worker-finished.json','takeover.json','lead-backend-verification.json','acceptance-evidence.json','lead-documentation-review.json','lead-code-review.json','lead-edits.json','build.json','scope-observation.json','scope-reconciliation.json')]
@@ -79,7 +80,7 @@ def lesson(root, *, trigger, cause, prevention, evidence, scope='project', candi
         anchor=candidate_id
     else:
         if not re.fullmatch(r'[a-z0-9-]{8,120}',evidence):raise ValueError('Project evidence must be a finalized task ID')
-        f=evo.safe(root,'.agentic/runs/'+evidence);state=read_record(f/'state.json')
+        f=evo.safe(root,project_state_name() + '/runs/' + evidence);state=read_record(f/'state.json')
         if state.get('stage')!='ready_for_human_release_review' or not state.get('lead_verified'):raise ValueError('Task has no final acceptance record')
         anchor=evidence
     key=hashlib.sha256((' '.join(cause.lower().split())+'\n'+' '.join(prevention.lower().split())+'\n'+scope).encode()).hexdigest()[:20]
@@ -103,11 +104,14 @@ def context(root):
     return '\n'.join(lines)
 
 
-EXCLUDE={'.git','.agentic','.agents','.claude','.codex','.venv','venv','node_modules','target','build','dist','__pycache__','.dart_tool','vendor'}
+EXCLUDE={'.git','.agentic','.gaston','.agents','.claude','.codex','.venv','venv','node_modules','target','build','dist','__pycache__','.dart_tool','vendor'}
 
-def health(root, relative_path='.agentic', max_files=300):
+def health(root, relative_path=None, max_files=300):
     """Conservative static hints, not proof of dead code. Python AST + Java private methods."""
-    root=Path(root).resolve();target=root if relative_path=='.' else evo.safe(root,relative_path)
+    root=Path(root).resolve()
+    if relative_path is None:
+        relative_path=project_state_name()
+    target=root if relative_path=='.' else evo.safe(root,relative_path)
     if not target.exists():raise ValueError('Unknown code health path')
     if any(p in {'local','runs','tasks','.git','.env'} or p.startswith('.env') for p in Path(relative_path).parts):raise ValueError('Private/generated path')
     cap=max(1,min(2000,int(max_files)));found=[];truncated=False;document_paths=[]
@@ -119,7 +123,7 @@ def health(root, relative_path='.agentic', max_files=300):
     else:
         paths=[]
         for folder,dirs,files in os.walk(target,followlinks=False):
-            dirs[:]=sorted(d for d in dirs if d not in EXCLUDE and not d.startswith('.') and d not in ('local','runs','tasks') and not (Path(folder)/d).is_symlink() and not (Path(folder)==root/'.agentic' and d in ('local','runs','tasks')))
+            dirs[:]=sorted(d for d in dirs if d not in EXCLUDE and not d.startswith('.') and d not in ('local','runs','tasks') and not (Path(folder)/d).is_symlink() and not (Path(folder)==project_state(root) and d in ('local','runs','tasks')))
             for name in sorted(files):
                 p=Path(folder)/name
                 if p.is_symlink():continue
@@ -129,7 +133,9 @@ def health(root, relative_path='.agentic', max_files=300):
                 paths.append(p)
             if truncated:break
     # The default toolkit scan includes historical release docs in its docs directory.
-    if relative_path=='.agentic':
+    if relative_path is None:
+        relative_path=project_state_name()
+    if relative_path==project_state_name():
         try:
             docs=evo.safe(root,'docs')
             document_paths.extend(p for p in docs.glob('*') if p.is_file() and not p.is_symlink() and code_quality.RELEASE_DOC.fullmatch(p.name))

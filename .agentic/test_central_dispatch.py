@@ -80,7 +80,7 @@ class CentralDispatchTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 result = self.cli(*arguments)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                self.assertIn('supports dev --help only', result.stderr)
+                self.assertIn('legacy workspace migration is required', result.stderr)
                 self.assertTrue(self.manifest.is_file())
                 self.assertFalse((self.project / '.agentic/local').exists())
                 self.assertFalse((self.project / '.gaston').exists())

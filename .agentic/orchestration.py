@@ -4,6 +4,7 @@ This is a local coordination guard, not a filesystem sandbox for third-party
 agents. The native CLIs retain their own permission controls.
 """
 from __future__ import annotations
+from project_layout import project_state, central_mode
 import hashlib
 import json
 import os
@@ -28,7 +29,7 @@ def mutation_guard(root):
         if root in held:
             yield
             return
-        lock=root/'.agentic/local/orchestration.lock' 
+        lock=project_state(root)/'local/orchestration.lock' 
         lock.parent.mkdir(parents=True,exist_ok=True)
         if lock.is_symlink():raise ValueError('Unsafe orchestration lock')
         from platform_compat import file_lock
@@ -38,7 +39,7 @@ def mutation_guard(root):
             finally:_GUARD_STATE.roots=held
 
 SAFE_ID=re.compile(r'[a-z0-9][a-z0-9-]{0,79}\Z')
-PRIVATE={'.gaston-dev-db','.agentic','.claude','.agents','.codex','.git','.ssh','.env','node_modules','target','build','dist','.venv','venv'}
+PRIVATE={'.gaston-dev-db','.agentic','.gaston','.claude','.agents','.codex','.git','.ssh','.env','node_modules','target','build','dist','.venv','venv'}
 ROOT_PROTECTED={'dev','AGENTS.md','CLAUDE.md','.gitignore','README.md'}
 KEY_EXT={'.pem','.key','.p12','.pfx','.jks','.keystore'}
 
@@ -91,7 +92,7 @@ def active_builders(root, exclude=None):
     from runtime_recovery import recover
     recover(root)
     out=[]
-    for folder in (Path(root)/'.agentic/runs').glob('*'):
+    for folder in (project_state(root)/'runs').glob('*'):
         if folder.name==exclude or folder.is_symlink() or not folder.is_dir():continue
         task=read_record(folder/'task.json');state=read_record(folder/'state.json');worker=read_record(folder/'worker.json')
         if not task or task.get('owner')=='lead':continue
@@ -103,7 +104,7 @@ def active_builders(root, exclude=None):
 
 def plan_file(root, plan_id):
     if not isinstance(plan_id,str) or not SAFE_ID.fullmatch(plan_id):raise ValueError('Invalid plan ID')
-    p=Path(root)/'.agentic/local/work-plans'/f'{plan_id}.json'
+    p=project_state(root)/'local/work-plans'/f'{plan_id}.json'
     if p.is_symlink():raise ValueError('Unsafe plan path')
     return p
 
@@ -136,7 +137,7 @@ def create_plan(root, goal, items, *, existing=None):
 
 def extend_plan(root,key,items):
     existing=get_plan(root,key)
-    if existing.get('checkpoint_task_id') and read_record(Path(root)/'.agentic/runs'/existing['checkpoint_task_id']/'state.json').get('lead_verified'):
+    if existing.get('checkpoint_task_id') and read_record(project_state(root)/'runs'/existing['checkpoint_task_id']/'state.json').get('lead_verified'):
         raise ValueError('Checkpoint already accepted; open a new plan for new work')
     return create_plan(root,existing['goal'],items,existing=existing)
 
@@ -149,7 +150,7 @@ def get_plan(root, key):
 def item_status(root, item):
     if item['kind']=='inspect':return 'done' if item.get('evidence') else 'pending'
     if not item.get('task_id'):return 'pending'
-    folder=Path(root)/'.agentic/runs'/item['task_id'];state=read_record(folder/'state.json')
+    folder=project_state(root)/'runs'/item['task_id'];state=read_record(folder/'state.json')
     if state.get('stage')=='slice_reviewed':return 'done'
     if state.get('lead_verified') and state.get('stage')=='ready_for_human_release_review':
         # Historical slice evidence remains historical. Final integrated pass is
@@ -165,7 +166,7 @@ def plan_status(root,key):
     for k,v in items.items():
         ready=all(statuses[x]=='done' for x in v['depends_on'])
         result.append({**v,'status':statuses[k],'ready':ready and statuses[k]=='pending'})
-    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(Path(root)/'.agentic/runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'note':'Run ready independent Lead items while Builder works; then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
+    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'note':'Run ready independent Lead items while Builder works; then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
 
 
 def select_item(root, key, name, owner, kind):
@@ -345,7 +346,7 @@ def inspect_files(root, requests):
 def _scope_conflicts(root, paths, exclude=None):
     for worker in active_builders(root,exclude=exclude):
         if not worker['scope'] or overlaps(paths,worker['scope']):raise ValueError('Scope overlaps active Builder '+worker['task_id'])
-    for f in (Path(root)/'.agentic/runs').glob('*'):
+    for f in (project_state(root)/'runs').glob('*'):
         if f.name==exclude or f.is_symlink() or not f.is_dir():continue
         if read_record(f/'state.json').get('stage') in ('lead_implementing','lead_takeover_required'):
             scope=read_record(f/'task.json').get('write_scope') or []
@@ -365,7 +366,7 @@ def extend_item_scope(root,plan,item,paths,*,reason):
 
 def _idle_task(root,tid):
     if not isinstance(tid,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',tid):raise ValueError('Invalid task ID')
-    folder=Path(root)/'.agentic/runs'/tid
+    folder=project_state(root)/'runs'/tid
     task=read_record(folder/'task.json');state=read_record(folder/'state.json')
     if folder.is_symlink() or not task or not state:raise ValueError('Unknown task')
     if state.get('stage') in RUNNING or any(x['task_id']==tid for x in active_builders(root)) or state.get('lead_verified') or state.get('stage') in ('slice_reviewed','abandoned','ready_for_human_release_review'):
@@ -452,7 +453,7 @@ def scope_observation(root,folder,before,after,scope,reported):
         observed=sorted(name for name in set(before)|set(after) if before.get(name)!=after.get(name) and not within(name,scope))
         begun=read_record(folder/'worker.json').get('started_at',0)
         if not isinstance(begun,(int,float)):begun=float('inf')
-        for run in (Path(root)/'.agentic/runs').glob('*'):
+        for run in (project_state(root)/'runs').glob('*'):
             if run.is_symlink() or not run.is_dir():continue
             for name,entry in read_record(run/'lead-edits.json').get('files',{}).items():
                 if name in observed and isinstance(entry,dict) and isinstance(entry.get('edited_at'),(int,float)) and entry['edited_at']>=begun and entry.get('after_sha256') and entry['after_sha256']==after.get(name):known.append(name)

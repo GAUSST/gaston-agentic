@@ -6,6 +6,7 @@ Temporary browser smoke fixtures are created under .agentic/local only.
 MCP JSON-RPC stdio; stdout is *exclusively* protocol messages.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import json
 import atexit
 import signal
@@ -28,8 +29,9 @@ import documentation_review
 import code_quality
 import orchestration as orch
 
-ROOT = Path(__file__).resolve().parent.parent
-LOCAL = ROOT / '.agentic' / 'local'
+ROOT = project_root()
+STATE = project_state(ROOT)
+LOCAL = STATE / 'local'
 # Snapshot identity at process startup, not from old task records or an overlay
 # made while this server is still running. Every tool reports the same release.
 _MANIFEST_BYTES = (Path(__file__).resolve().parent / 'manifest.json').read_bytes()
@@ -415,7 +417,7 @@ def run_local_api_checks(relative_path):
     import api_checks
     try: api_checks.base_url()
     except ValueError as exc:return response('blocked',reason=str(exc))
-    outcome=execute([sys.executable,str(ROOT/'.agentic/api_checks.py'),str(spec)],timeout=180)
+    outcome=execute([sys.executable,str(runtime_script('api_checks.py')),str(spec)],timeout=180)
     code=outcome['exit_code']
     return response('pass' if code==0 else 'blocked' if code in (None,2) else 'fail',
                     evidence={'exit_code':code,'summary':outcome.get('stdout','')[-3500:],
@@ -693,7 +695,7 @@ def _launch_builder(folder, *, revision=0):
     orch.put(folder/'worker-launch.json', launch)
     with (folder/'worker.log').open('ab') as out:
         try:
-            proc = subprocess.Popen([sys.executable, str(ROOT/'.agentic/live_builder_worker.py'), folder.name, attempt],
+            proc = subprocess.Popen([sys.executable, str(runtime_script('live_builder_worker.py')), folder.name, attempt],
                 cwd=ROOT, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
                 **__import__('platform_compat').popen_kwargs(), env=_builder_worker_env())
         except OSError as exc:
@@ -858,7 +860,7 @@ def request_builder_revision(task_id, feedback, specification_files=None, risk='
         return response('blocked',reason='Specify concrete local correction instructions')
     try:spec_paths=_spec_paths(specification_files)
     except (OSError,ValueError) as exc:return response('blocked',reason=str(exc))
-    folder=ROOT/'.agentic/runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():
         return response('blocked',reason='Unknown task')
     import runtime_recovery
@@ -999,7 +1001,7 @@ def verify_delegated_backend_task(task_id, project, test_filter, reviewed=False,
         return response('blocked', reason='Lead MCP authorization missing')
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):
         return response('blocked',reason='Invalid task ID')
-    folder=ROOT/'.agentic/runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():
         return response('blocked',reason='Unknown task')
     if reviewed is not True or not isinstance(review_notes,str) or not review_notes.strip():
@@ -1165,7 +1167,7 @@ def finalize_delegated_task(task_id,reviewed=False,review_notes='',deleted_paths
 
 def _task_folder(task_id):
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):return None
-    folder=ROOT/'.agentic/runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():return None
     return folder
 
@@ -1367,9 +1369,9 @@ def acceptance_evidence_detail(task_id,check_id,include_logs=False):
             'evidence':evidence_efficiency.compact_outcome(entry.get('evidence',{}),failure=entry.get('result')!='pass')}
     if include_logs:
         rel=(entry.get('evidence') or {}).get('log_path')
-        if isinstance(rel,str) and rel.startswith('.agentic/local/backend-logs/'):
+        if isinstance(rel,str) and rel.startswith(project_state_name()+'/local/backend-logs/'):
             path=(ROOT/rel).resolve()
-            allowed=(ROOT/'.agentic/local/backend-logs').resolve()
+            allowed=(project_state(ROOT)/'local/backend-logs').resolve()
             if path.is_relative_to(allowed) and path.is_file() and not path.is_symlink():
                 result['log_excerpt']=path.read_text(encoding='utf8',errors='replace')[-8000:]
         else:
@@ -1408,7 +1410,7 @@ def delegation_status(task_id):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):
         return response('blocked',reason='Invalid task ID')
-    folder=ROOT/'.agentic/runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if not (folder/'task.json').is_file():return response('blocked',reason='Unknown task')
     def read(name):
         try:return json.loads((folder/name).read_text(encoding='utf8'))
@@ -1462,7 +1464,7 @@ def _orchestration_action(action, args):
             import task_runtime
             report=orch.plan_status(ROOT,args.get('plan_id'))
             ids=list(dict.fromkeys([x['task_id'] for x in report['items'] if x.get('task_id')]+([report['checkpoint_task_id']] if report.get('checkpoint_task_id') else [])))
-            data=[task_runtime.task_metrics(ROOT/'.agentic/runs'/tid) for tid in ids]
+            data=[task_runtime.task_metrics(project_state(ROOT)/'runs'/tid) for tid in ids]
             return response('ready',plan_id=report['plan_id'],tasks=data,codex_usage_reported_tasks=sum(x['provider_usage']['tokens'] is not None for x in data),note='Only CLI-reported token counts. Unreported provider/Lead usage and savings remain unknown.')
         if action=='extend':return orch.extend_plan(ROOT,args.get('plan_id'),args.get('items'))
         if action=='inspect':return orch.inspect_files(ROOT,args.get('files'))
@@ -1619,11 +1621,11 @@ def prepare_checkpoint_acceptance(args):
         plan['checkpoint_task_id']=ids[0];orch.put(orch.plan_file(ROOT,pid),plan)
         return response('ready',task_id=ids[0],work_plan=orch.plan_status(ROOT,pid),note='One fully verified slice; reuse its current acceptance without rerun')
     paths=set()
-    for tid in ids:paths.update(orch.read_record(ROOT/'.agentic/runs'/tid/'build.json').get('changed_files',[]))
+    for tid in ids:paths.update(orch.read_record(project_state(ROOT)/'runs'/tid/'build.json').get('changed_files',[]))
     if not paths:raise ValueError('No recorded changed files for integrated verification')
     reviewed_docs=set()
     for source_id in ids:
-        source_folder=ROOT/'.agentic/runs'/source_id
+        source_folder=project_state(ROOT)/'runs'/source_id
         reviewed_docs.update(orch.read_record(source_folder/'lead-documentation-review.json').get('documents',{}))
         reviewed_docs.update(x['original_path'] for x in orch.read_record(source_folder/'task.json').get('specifications',[]) if isinstance(x,dict) and isinstance(x.get('original_path'),str))
     reviewed_docs=set(documentation_review.required_paths(reviewed_docs))
@@ -1828,7 +1830,7 @@ def handle(request, *, cancel_event=None, progress=None):
         if name not in CALLS or not isinstance(args,dict):
             return {'content':[{'type':'text','text':'Unknown tool or invalid input'}],'isError':True}
         try:
-            if LIVE_SERVER and name!='environment_status' and hashlib.sha256((ROOT/'.agentic/manifest.json').read_bytes()).hexdigest()!=MANIFEST_SHA256:
+            if LIVE_SERVER and name!='environment_status' and hashlib.sha256((runtime_manifest() if central_mode() else ROOT/'.agentic/manifest.json').read_bytes()).hexdigest()!=MANIFEST_SHA256:
                 out=response('blocked',reason='This MCP instance loaded an outdated toolkit. Close the stale session and reopen ./dev.')
             elif LIVE_SERVER and os.environ.get('GASTON_LEAD_TOKEN') and not _authorized_delegate():
                 out=response('blocked',reason='This MCP instance no longer belongs to the active Engineering Lead.')

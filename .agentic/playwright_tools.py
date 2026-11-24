@@ -5,6 +5,7 @@ repeatable tests. Neither establishes that a project has a test suite. All
 installations require one category-level approval; previously ready toolsets are skipped.
 """
 from __future__ import annotations
+from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 
 import json
 from pathlib import Path
@@ -18,7 +19,7 @@ def speak(english: str, french: str) -> str:
     return french if CURRENT_LANGUAGE.get() == 'fr' else english
 
 
-HARNESS = Path('.agentic/local/playwright-tests')
+HARNESS = Path(project_state_name()) / 'local/playwright-tests'
 
 
 def node_major():

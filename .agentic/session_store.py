@@ -5,6 +5,7 @@ registries are migrated without losing their stored session IDs. Roles never swa
 silently when a developer changes provider mode.
 """
 from __future__ import annotations
+from project_layout import project_state
 from contextlib import contextmanager, nullcontext
 import datetime as dt
 import json
@@ -347,14 +348,14 @@ def native_processes(root, *, exclude=()):
 class Store:
     def __init__(self, root: Path):
         self.root = Path(root).resolve()
-        self.local = self.root / '.agentic' / 'local'
+        self.local = project_state(self.root) / 'local'
         self.registry = self.local / 'sessions.json'
         self.locks = self.local / 'locks'
         self._held_leases = {}
 
     def _configured_roles(self):
         try:
-            cfg = json.loads((self.root / '.agentic/config.json').read_text(encoding='utf8'))
+            cfg = json.loads((project_state(self.root) / 'config.json').read_text(encoding='utf8'))
             prefs = cfg.get('preferences', {})
             builder=prefs.get('builder','codex')
             reviewer=prefs.get('reviewer','claude')

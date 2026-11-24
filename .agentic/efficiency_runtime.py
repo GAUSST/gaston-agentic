@@ -1,5 +1,6 @@
 """Bounded deterministic telemetry at natural engineering boundaries."""
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 from pathlib import Path
 import time
 import token_intelligence as ti
@@ -13,7 +14,7 @@ def lead_boundary(root,provider=None,sid=None):
         if not entry:return None
         sid=entry['id']
     budget=ti.lead_context(root,provider,sid)
-    folder=Path(root)/'.agentic/local'
+    folder=project_state(root)/'local'
     import serena_tools
     snapshot={'provider':provider,'session_id':sid,'recorded_at':time.time(),**budget,'serena':serena_tools.usage_summary(root)}
     orch.put(folder/'lead-efficiency-latest.json',snapshot)
@@ -44,7 +45,7 @@ def stop_advisory(root,provider,sid):
     advisory=lead_boundary(root,provider,sid)
     if not advisory:return None
     fingerprint=ti.last_user_fingerprint(provider,sid)
-    path=Path(root)/'.agentic/local/lead-efficiency-notice.json'
+    path=project_state(root)/'local/lead-efficiency-notice.json'
     prior=orch.read_record(path)
     if prior.get('session_id')==sid and prior.get('fingerprint')==fingerprint:return None
     orch.put(path,{'session_id':sid,'fingerprint':fingerprint,'recorded_at':time.time()})

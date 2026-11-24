@@ -4,6 +4,7 @@ Discovery is read-only. It never installs packages or assumes that a command
 returning zero proves a business invariant. Customized checks are preserved.
 """
 from __future__ import annotations
+from project_layout import project_state, project_state_name, project_root
 
 import json
 import os
@@ -121,9 +122,9 @@ def discover(root: Path, cfg: dict) -> tuple[list[dict], dict]:
                                else f'web_e2e__{len([g for g in generated if g["name"].startswith("web_e2e")])}',
                                rel,['npm','exec','--offline','--','playwright','test'],1200,area='web'))
     # Keep the existing sandbox harness, but don't let it replace real app tests.
-    harness=root/'.agentic/local/playwright-tests'
+    harness=project_state(root)/'local/playwright-tests'
     if not web and not any(g['name']=='web_e2e' for g in generated) and _test_files(harness):
-        generated.append(_gate('web_e2e', '.agentic/local/playwright-tests',
+        generated.append(_gate('web_e2e', project_state_name() + '/local/playwright-tests',
                               ['npm','exec','--offline','--','playwright','test'],1200,area='web'))
     project={'java':stacks['java'], 'flutter':stacks['flutter'], 'web':web}
     return generated, project

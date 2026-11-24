@@ -20,4 +20,4 @@ packages = ["gaston_engine"]
 gaston_engine = ".agentic"
 
 [tool.setuptools.package-data]
-gaston_engine = ["policies/*.md"]
+gaston_engine = ["manifest.json", "policies/*.md"]
