@@ -191,6 +191,17 @@ def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
         return {'exit_code':None, 'reason':'execution_failed', 'stderr':str(exc)[-1000:]}
 
 
+_DEFAULT_EXECUTE = execute
+
+
+def _execute_browser(argv, *, cwd, env, timeout):
+    """Use the owned process-group runner in production, retaining Lead test injection."""
+    if execute is not _DEFAULT_EXECUTE:
+        return execute(argv,cwd=cwd,env=env,timeout=timeout)
+    import web_acceptance
+    return web_acceptance.execute_owned(argv,cwd=cwd,env=env,timeout=timeout)
+
+
 def sdk_tool(name):
     executable = name + '.exe' if os.name == 'nt' else name
     for key in ('ANDROID_HOME','ANDROID_SDK_ROOT'):
@@ -307,7 +318,7 @@ def run_project_web_tests(project=None,visible=False):
     if project is None and len(candidates)==1:project=candidates[0]
     if project not in candidates:
         return response('blocked',reason='Select exactly one app with real Playwright specs',projects=candidates)
-    return web_acceptance.run_browser(ROOT,project,execute=web_acceptance.execute_owned,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'),visible=visible)
+    return web_acceptance.run_browser(ROOT,project,execute=_execute_browser,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'),visible=visible)
 
 
 
