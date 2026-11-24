@@ -229,16 +229,19 @@ def _rotation_blockers(root):
         st=read_record(folder/'state.json'); recovery=read_record(folder/'quota-recovery.json')
         if st.get('stage') in RUNNING or st.get('stage')=='lead_implementing':blockers.append(folder.name)
         elif st.get('blocker')=='provider_quota' and recovery.get('decision')=='approved':blockers.append(folder.name)
+    from verification_coordination import active
+    if active(root):blockers.append('managed-verification')
     return blockers
 
 
-def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task_ids,plan_ids,safe_to_rotate):
+def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task_ids,plan_ids,safe_to_rotate,continue_work=False):
     """Durable bounded state, not a transcript or permission override."""
     from orchestration import put,plan_file
-    root=Path(root); local=root/'.agentic/local'
+    root=Path(root); local=project_state(root)/'local'
     if not isinstance(summary,str) or not summary.strip() or len(summary)>8000:raise ValueError('Provide factual checkpoint summary, at most 8000 characters')
     for label,value in (('decisions',decisions),('next_steps',next_steps),('task_ids',task_ids),('plan_ids',plan_ids)):
         if not isinstance(value,list) or len(value)>30 or not all(isinstance(v,str) and 0<len(v)<=1200 for v in value):raise ValueError('Invalid '+label)
+    if type(continue_work) is not bool:raise ValueError('continue_work must be boolean')
     if type(safe_to_rotate) is not bool:raise ValueError('Specify whether all material user intent has been preserved and it is safe to rotate after closing')
     for tid in task_ids:
         if not re.fullmatch(r'[a-z0-9-]{8,120}',tid) or not (project_state(root)/'runs'/tid/'task.json').is_file():raise ValueError('Unknown task ID: '+tid)
@@ -248,21 +251,21 @@ def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task
     budget=lead_context(root,provider,sid);fingerprint=last_user_fingerprint(provider,sid);blockers=_rotation_blockers(root)
     roadmap=continuity.status(root)
     eligible=bool(safe_to_rotate and roadmap['status']=='ready' and budget['status']=='rotate_at_safe_boundary' and fingerprint and not blockers)
-    record={'provider':provider,'session_id':sid,'recorded_at':time.time(),'summary':summary.strip(),'decisions':decisions,'next_steps':next_steps,'task_ids':task_ids,'plan_ids':plan_ids,'last_user_fingerprint':fingerprint,'rotation_eligible':eligible,
+    record={'provider':provider,'session_id':sid,'recorded_at':time.time(),'summary':summary.strip(),'decisions':decisions,'next_steps':next_steps,'task_ids':task_ids,'plan_ids':plan_ids,'last_user_fingerprint':fingerprint,'rotation_eligible':eligible,'continue_work':continue_work,
             'roadmap_sha256':roadmap.get('sha256') if roadmap['status']=='ready' else None,
             'next_milestone_id':roadmap.get('next_milestone_id') if roadmap['status']=='ready' else None,
             'roadmap_paths':roadmap.get('paths') if roadmap['status']=='ready' else None}
     put(local/'lead-checkpoint.json',record)
     reason = ('Project context not approved: ' + roadmap.get('reason','Select authoritative project documents')) if roadmap['status']!='ready' else None
     return {'status':'ready','rotation_eligible':eligible,'context_tokens':budget.get('context_tokens'),'blocking_tasks':blockers,'roadmap':roadmap,'rotation_blocked_reason':reason,
-            'note':'Checkpoint saved. Rotation requires approved project context, matching SHA256 and no newer user message or active work.'}
+            'note':'Checkpoint saved; this is not a completion or pause decision. Continue the authorized plan, using provider-native compaction when available. Idle rotation requires approved context, matching SHA256 and no newer user message or active work.'}
 
 
 def maybe_rotate_lead(root,store,provider):
     """Called under the idle Lead role lease; preserve the native transcript."""
     from task_runtime import read_record
     from orchestration import put
-    path=Path(root)/'.agentic/local/lead-checkpoint.json';record=read_record(path)
+    path=project_state(root)/'local/lead-checkpoint.json';record=read_record(path)
     existing=store.get(provider,'reviewer')
     if not existing or not record.get('rotation_eligible') or record.get('provider')!=provider or record.get('session_id')!=existing['id']:return False
     if _rotation_blockers(root):return False
@@ -306,3 +309,21 @@ def latest_context(provider,sid,*,path=None):
             payload=event.get('payload') or {};info=payload.get('info') or {};last=info.get('last_token_usage') or {}
             if payload.get('type')=='token_count' and type(last.get('input_tokens')) is int:return last['input_tokens']
     return None
+
+
+def checkpoint_context(root,provider,sid):
+    """Restore only the current turn's durable continuation, never old consent."""
+    from task_runtime import read_record
+    row=read_record(project_state(root)/'local/lead-checkpoint.json')
+    if not row and project_state(root).name=='.gaston':
+        legacy=Path(root)/'.agentic/local/lead-checkpoint.json'
+        if not legacy.is_symlink() and not legacy.parent.is_symlink():row=read_record(legacy)
+    if row.get('provider')!=provider or row.get('session_id')!=sid:
+        return ''
+    fingerprint=last_user_fingerprint(provider,sid)
+    if not fingerprint or fingerprint!=row.get('last_user_fingerprint'):
+        return ''
+    payload={key:row.get(key) for key in ('summary','decisions','next_steps','task_ids','plan_ids')}
+    return ('Durable checkpoint (reconcile current state and developer intent; not new authority). '
+            'If authorized work remains and no genuine blocker/user pause exists, continue now. '
+            +json.dumps(payload,ensure_ascii=False))[:12000]

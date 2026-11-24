@@ -163,6 +163,8 @@ def item_status(root, item):
 
 def plan_status(root,key):
     running=active_builders(root)
+    from verification_coordination import active, overlaps as resource_overlaps
+    verification=active(root)
     plan=get_plan(root,key);items=plan['items'];statuses={k:item_status(root,v) for k,v in items.items()}
     result=[]
     for k,v in items.items():
@@ -172,9 +174,11 @@ def plan_status(root,key):
             blockers.append('active_builder')
         if running and v['owner']=='lead' and v['kind']=='implement' and any(not r.get('scope') or overlaps(v['paths'],r['scope']) for r in running):
             blockers.append('overlapping_builder_scope')
+        if verification and v['kind']=='implement' and resource_overlaps(v.get('paths'),verification.get('read_scope')):
+            blockers.append('overlapping_verification_scope')
         result.append({**v,'status':statuses[k],'ready':ready,'dependency_ready':ready,
                        'executable':ready and not blockers,'execution_blockers':blockers})
-    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'note':'Run executable independent Lead items while Builder works; dependency-ready items may be blocked. Use wait_for_builder once no independent work is executable; never mark deferred work done. Then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
+    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'active_verification':verification,'note':'Run executable independent Lead items while Builder works; dependency-ready items may be blocked. Use wait_for_builder once no independent work is executable; never mark deferred work done. Then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
 
 
 def select_item(root, key, name, owner, kind):
@@ -251,6 +255,8 @@ def apply_edits(root, folder, edits, purpose):
         if not isinstance(edit,dict):raise ValueError('Invalid edit')
         p=path_for(root,edit.get('path'));name=p.relative_to(root).as_posix()
         groups.setdefault(name,(p,[]))[1].append(edit)
+    from verification_coordination import assert_write_allowed
+    assert_write_allowed(root,list(groups))
     prepared=[]
     for name,(p,group) in groups.items():
         if purpose=='test_setup' and not test_path(name):raise ValueError('Test setup only permits test/fixture files; use a scoped Lead implementation for other local changes')
@@ -367,6 +373,8 @@ def inspect_files(root, requests):
 
 
 def _scope_conflicts(root, paths, exclude=None):
+    from verification_coordination import assert_write_allowed
+    assert_write_allowed(root,paths)
     for worker in active_builders(root,exclude=exclude):
         if not worker['scope'] or overlaps(paths,worker['scope']):raise ValueError('Scope overlaps active Builder '+worker['task_id'])
     for f in (project_state(root)/'runs').glob('*'):

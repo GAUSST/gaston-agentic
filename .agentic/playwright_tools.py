@@ -65,6 +65,10 @@ def test_workspace(root: Path) -> Path:
         if any((folder/('playwright.config.'+ext)).is_file()
                for ext in ('js','cjs','mjs','ts','mts','cts')):
             return folder
+    import workspace_checks
+    for relative in workspace_checks.web_projects(root):
+        folder=(root/relative).resolve()
+        if (folder/'node_modules/@playwright/test/package.json').is_file():return folder
     return local
 
 

@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-24.04, macos-latest, windows-latest]
         python-version: ['3.11', '3.13']
     steps:
       - uses: actions/checkout@v5
@@ -50,6 +50,15 @@ jobs:
         run: python -m unittest discover -s .agentic -p 'test_engineering_quality_contract.py' -v
         env:
           PYTHONPATH: .agentic
+      - name: Install live browser fixture dependencies
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: |
+          npm install --prefix "$RUNNER_TEMP/gaston-live-web" --no-audit --no-fund vite@6 @playwright/test@1.51.1
+          node "$RUNNER_TEMP/gaston-live-web/node_modules/@playwright/test/cli.js" install --with-deps chromium
+      - name: Real Vite and Chromium integration
+        if: runner.os == 'Linux' && matrix.python-version == '3.11'
+        run: |
+          GASTON_LIVE_WEB_MODULES="$RUNNER_TEMP/gaston-live-web/node_modules" PYTHONPATH=.agentic python -m unittest discover -s .agentic -p 'test_central_visual_web.py' -v
       - name: Package integrity
         run: python .agentic/release_audit.py
       - name: Full regression suite (Linux)
