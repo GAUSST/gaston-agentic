@@ -1,64 +1,53 @@
-# Publishing and updating Gaston v1.5.5
+# Publishing and updating Gaston
 
-## Trust and distribution
+## Central installations (v1.6+)
 
-Gaston is **generic software**. Never publish application source, `.agentic/local/`,
-`.agentic/config.json`, `.env`, credentials, transcripts, task evidence or
-provider configuration from an installed project. Publish only the audited
-source release tree provided here (not a working application repository).
+Close active Gaston sessions, then run `dev update` from an application workspace
+or an ordinary directory outside legacy toolkit checkouts. The official
+publisher is pinned to GAUSST/gaston-agentic. No publisher configuration is
+required for a central installation. The updater checks for a newer published
+stable release, verifies the signed annotated tag and exact-commit manifest,
+and asks for explicit installation approval. It stages the verified engine in
+the global version store and activates it using a version pointer.
 
-The public source repository is **https://github.com/GAUSST/gaston-agentic**.
-It is the only intended official update publisher. Before publishing a verified release:
+Project-owned .gaston state, sessions and application source are not part of
+the update. `dev update --rollback` restores a recorded previous version when
+available. An ordinary launch never installs an update automatically. Legacy
+project-local installations retain their own updater and explicit publisher
+trust configuration; do not apply legacy overlay instructions to central
+installations.
 
-1. Verify the published source contains only toolkit-owned files and no secrets.
-2. Require CI and protect the `main` branch and release tags.
-3. Create a **cryptographically signed annotated** tag `v1.5.5` pointing to the verified release commit, then push the tag.
-   **Do not sign a stale local checkout:** `git fetch origin main` first;
-   confirm `git rev-parse HEAD` matches `git rev-parse origin/main` and the
-   committed manifest has `release: v1.5.5`. Sign that exact verified SHA
-   (`git tag -s v1.5.5 VERIFIED_COMMIT_SHA -m 'Gaston v1.5.5'`).
-   Configure signature verification on GitHub beforehand.
-4. The `release.yml` workflow checks tag/build identity and audit/test gates
-   across all three systems before publishing a GitHub Release. No ZIPs are
-   manually created for subsequent updates; GitHub's exact-commit source
-   snapshot is used by the updater.
-5. On an existing installation, run `dev update --set-repo GAUSST/gaston-agentic` once.
-   The installer requires the user to type the exact publisher name to trust
-   it. `dev update --check` reports a new stable release; `dev update` verifies,
-   asks for consent, applies, and records a recovery snapshot.
+## Maintainer release process
 
-A public repository has no authentication requirement for reading its releases.
-Trust is not established by a checksum alone: the updater pins a verified
-signed tag, corresponding commit SHA and manifest hashes. Repository maintainers
-and their signing keys must themselves be secured.
+1. Verify the release PR and require passing CI on the exact commit to release.
+   Publish only toolkit files, never application code, credentials, transcripts,
+   or private project state.
+2. Fetch the verified commit from main. Check that the manifest release and
+   build agree with pyproject.toml and the intended version.
+3. Using the maintainer's registered signing key, create a cryptographically
+   signed annotated tag for that exact commit (example for v1.6.1):
 
-## Update detection
+   ```sh
+   git fetch origin main
+   git tag -s v1.6.1 VERIFIED_COMMIT_SHA -m "Gaston v1.6.1"
+   git push origin refs/tags/v1.6.1
+   ```
 
-`dev` never runs `init` or installs updates. On each normal launch it may display
-a *cached* notification, and if due it starts a detached network check. It never
-blocks a session on GitHub availability. Successful checks are limited to once
-per 24 hours; failure retries are throttled. `dev update --check` is explicit.
+   Replace VERIFIED_COMMIT_SHA with the exact reviewed commit SHA. Do not sign
+   a stale checkout, move existing release tags, or create unsigned tags.
+4. The existing release.yml workflow validates tag identity, the full manifest,
+   regression tests and installation smoke tests on Linux, macOS and Windows.
+   It verifies the signature before publishing a GitHub Release.
+5. On an existing v1.6.0 central installation, run `dev update` and approve
+   v1.6.1 only after the signed release has been published. Restart Gaston
+   and verify the loaded engine version and existing project context.
+   A merged PR alone is not an available update.
 
-## Safety and rollback
+## Integrity
 
-A candidate is accepted only if its tag, build number, manifest file list,
-sha256 hashes, and source archive agree. Before activation the updater checks
-that installed toolkit-owned files match their manifest, no managed tasks are
-active, and no local evolution is pending. It backs up the old toolkit and
-records a journal before writing. A failed or interrupted activation is rolled
-back before another `dev` command starts; a corrupt backup prevents further
-activation rather than overwriting arbitrary content. Local Gaston state,
-application source, application `.git/`, sessions, credentials and project
-configuration are not part of the signed toolkit payload.
-
-The updater does **not** fetch the moving `main` branch or change the
-application Git working tree. If the publisher is unconfigured, or a signed
-release has not yet been published, `dev update` does nothing.
-
-## Compatibility
-
-Do not rename or change the semantics of `dev init`, `dev`, `dev models`,
-`dev sessions`, or `dev uninstall`. `dev update` is an addition only.
-Releases must include migration testing from supported prior release trees
-without deleting project-local data. Runtime parity must be validated on real
-Windows and macOS runners; Linux-only tests are not a certification.
+The updater uses GitHub's exact-commit source snapshot, never the moving main
+branch. A checksum alone is not proof of publisher authenticity. Secure the
+repository and its signing keys. No update may implicitly initialize projects,
+overwrite application files or silently discard project context. Do not rename
+or change the established CLI commands. Cross-platform CI does not establish
+authenticated provider or application behavior; certify those separately.
