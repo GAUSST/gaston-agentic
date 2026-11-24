@@ -315,6 +315,9 @@ def checkpoint_context(root,provider,sid):
     """Restore only the current turn's durable continuation, never old consent."""
     from task_runtime import read_record
     row=read_record(project_state(root)/'local/lead-checkpoint.json')
+    if not row and project_state(root).name=='.gaston':
+        legacy=Path(root)/'.agentic/local/lead-checkpoint.json'
+        if not legacy.is_symlink() and not legacy.parent.is_symlink():row=read_record(legacy)
     if row.get('provider')!=provider or row.get('session_id')!=sid:
         return ''
     fingerprint=last_user_fingerprint(provider,sid)

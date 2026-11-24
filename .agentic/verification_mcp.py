@@ -121,6 +121,9 @@ def _schema(name,description,properties,required):
 _schema('plan_work','Decompose a substantial task into small coherent implementation slices and independent Lead inspections. Record real dependencies and narrow workspace-relative write paths. Inspection belongs to Lead. Set requires_idle_workspace=true for runtime acceptance and other exclusive checks. Do executable independent work while Builder implements. Avoid a single broad checkpoint delegation.',{'goal':_str,'items':{'type':'array','items':_item_schema}},['goal','items'])
 _schema('extend_work_plan','Add concrete newly discovered remediation slices to an unaccepted plan; preserve all existing work and dependencies.',{'plan_id':_str,'items':{'type':'array','items':_item_schema}},['plan_id','items'])
 _schema('defer_work_item','Mark an existing pending Lead item as requiring an idle workspace after an actual execution blocker. Does not close the item, alter dependencies or mark evidence passed.',{'plan_id':_str,'item_id':_str,'reason':_str},['plan_id','item_id','reason'])
+_schema('inspect_web_application','Launch the actual local Vite application and associated isolated backend if configured; capture private screenshots at responsive widths, with optional project-owned authentication fixture. Does not substitute for formal E2E acceptance. No user environment exports or application dependency installs.',{'project':_str,'routes':_strings,'widths':{'type':'array','items':{'type':'integer'}},'height':{'type':'integer'},'visible':{'type':'boolean'}},['project'])
+_schema('verification_reservation_status','Inspect the current managed verification reservation and process ownership; do not poll repeatedly.',{},[])
+_schema('recover_verification_reservation','Clear an interrupted reservation only after developer explicitly confirms all owned test processes have terminated. Never terminate arbitrary processes or mark evidence passed.',{'developer_confirmed':{'type':'boolean'}},['developer_confirmed'])
 _schema('work_plan_usage','Show observed per-slice and checkpoint usage, handoff bytes, corrections, tests and provider interruptions. Missing usage remains unknown.',{'plan_id':_str},['plan_id'])
 _schema('work_plan_status','Return compact plan state with dependency_ready, executable and execution_blockers. Only executable independent Lead work can run concurrently; detailed=true returns full goals, criteria and evidence when necessary. Do not repeatedly poll live jobs.',{'plan_id':_str,'detailed':{'type':'boolean'}},['plan_id'])
 _schema('inspect_workspace_files','Batch concurrent read-only checks for explicit files; returns existence, SHA256, matching line numbers for optional literal contains; no model calls. Read relevant source using native tools before interpretation.',{'files':{'type':'array','items':{'type':'object','properties':{'path':_str,'contains':_str},'required':['path'],'additionalProperties':False}}},['files'])
@@ -286,6 +289,12 @@ def run_web_smoke(visible=False):
                         note='Temporary HTML/spec cleaned up; application files untouched',evidence=result)
 
 
+def inspect_web_application(project,routes=None,widths=None,height=900,visible=False):
+    if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
+    import visual_web
+    return _standalone_verification('visual_web',project,lambda:visual_web.run(ROOT,project,routes=routes,widths=widths,height=height,visible=visible))
+
+
 def run_project_web_tests(project=None,visible=False):
     """Run the selected app's real Playwright specs with a managed lifecycle."""
     import workspace_checks
@@ -298,7 +307,7 @@ def run_project_web_tests(project=None,visible=False):
     if project is None and len(candidates)==1:project=candidates[0]
     if project not in candidates:
         return response('blocked',reason='Select exactly one app with real Playwright specs',projects=candidates)
-    return web_acceptance.run_browser(ROOT,project,execute=execute,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'),visible=visible)
+    return web_acceptance.run_browser(ROOT,project,execute=web_acceptance.execute_owned,external_url=os.environ.get('PLAYWRIGHT_BASE_URL'),visible=visible)
 
 
 
@@ -1782,6 +1791,10 @@ def record_approved_roadmap(args):
 
 def _standalone_verification(kind,project,run):
     import verification_coordination as coordination
+    if project is None and kind=='backend':
+        import backend_runner
+        options=backend_runner.discover(ROOT)
+        if len(options)==1:project=options[0]['path']
     try:
         with coordination.reserve(ROOT,kind,project) as reservation:
             result=run()
@@ -1809,6 +1822,8 @@ CALLS={
        'resolve_builder_questions':lambda args:_orchestrate('resolve_questions',args),
        'reconcile_builder_scope':lambda args:_orchestrate('reconcile_scope',args),
        'abandon_empty_lead_task':lambda args:_orchestrate('abandon',args),
+       'verification_reservation_status':lambda args:response('ready',active_verification=__import__('verification_coordination').active(ROOT)),
+       'recover_verification_reservation':lambda args:__import__('verification_coordination').recover_reservation(ROOT,developer_confirmed=args.get('developer_confirmed')) if _authorized_delegate() else response('blocked',reason='Lead authorization missing'),
        'checkpoint_lead_context':lambda args:lead_checkpoint_tool(args),
        'project_roadmap_status':lambda args:__import__('project_continuity').status(ROOT),
        'register_project_context_sources':lambda args:register_approved_project_context(args),
@@ -1845,6 +1860,7 @@ CALLS={
        'environment_status':lambda args:status(),
        'browser_diagnose':lambda args:browser_diagnose(),
        'run_web_smoke':lambda args:run_web_smoke(args.get('visible',False)),
+       'inspect_web_application':lambda args:inspect_web_application(args.get('project'),args.get('routes'),args.get('widths'),args.get('height',900),args.get('visible',False)),
        'run_project_web_tests':lambda args:_standalone_verification('web',args.get('project'),lambda:run_project_web_tests(args.get('project'),args.get('visible',False))),
        'start_existing_emulator':lambda args:start_existing_emulator(args.get('name','')),
        'run_maestro_tests':lambda args:run_maestro_tests(args.get('relative_path','.maestro')),
@@ -1964,7 +1980,8 @@ def main():
     signal.signal(signal.SIGTERM,_terminate)
     _recover_abandoned_emulator()
     atexit.register(_cleanup_on_exit)
-    protocol_out=sys.stdout  # Keep protocol output separate from redirect_stdout used by tools.
+    protocol_out=sys.stdout  # Only send() writes JSON-RPC; concurrent tool diagnostics go to stderr.
+    sys.stdout=sys.stderr
     output_lock=Lock(); waits_lock=Lock(); waits={}
 
     def send(result):
@@ -1999,7 +2016,7 @@ def main():
                         if event:event.set()
                     continue
                 if 'id' not in req:continue
-                if req.get('method')=='tools/call' and req.get('params',{}).get('name') in ('wait_for_builder','validate_evolution','run_task_acceptance_check','run_project_web_tests','run_backend_tests'):
+                if req.get('method')=='tools/call' and req.get('params',{}).get('name') in ('wait_for_builder','validate_evolution','run_task_acceptance_check','run_project_web_tests','run_backend_tests','inspect_web_application'):
                     event=Event()
                     with waits_lock:waits[req['id']]=event
                     Thread(target=background_wait,args=(req,event),daemon=req.get('params',{}).get('name')=='wait_for_builder').start()

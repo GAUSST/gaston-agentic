@@ -28,6 +28,18 @@ def active(root):
     if p.exists() and not row:raise ValueError('Unreadable verification reservation')
     return {**row,'owner_state':process_state(row.get('owner'))} if row else None
 
+def recover_reservation(root,*,developer_confirmed=False):
+    if developer_confirmed is not True:raise ValueError('Developer confirmation of terminated owned runtime processes is required')
+    with orch.mutation_guard(root):
+        row=active(root)
+        if not row:return {'status':'ready','note':'No stale verification reservation'}
+        if row['owner_state']!='dead':raise ValueError('Verification owner is live or cannot be verified dead; do not clear')
+        archive=project_state(root)/'local'/'interrupted-verifications'/('reservation-'+secrets.token_hex(8)+'.json')
+        orch.put(archive,{**row,'recovered_at':time.time(),'outcome':'interrupted_no_acceptance'})
+        _path(root).unlink()
+        return {'status':'ready','note':'Archived interrupted reservation; rerun the actual gate. No evidence passed.'}
+
+
 def assert_write_allowed(root,paths):
     row=active(root)
     if row and overlaps(paths,row.get('read_scope')):
@@ -46,7 +58,7 @@ def _safe_project(root,project):
 def scope_for(root,kind,project,*,integrated=False):
     """Only proven standalone repositories; unknown and integrated gates are exclusive."""
     root=Path(root).resolve()
-    if integrated or kind not in ('api','backend','web_verify'):return ['.']
+    if integrated or kind not in ('api','backend','web_verify','web','visual_web'):return ['.']
     folder=_safe_project(root,project)
     if folder is None:return ['.']
     try:
@@ -62,10 +74,16 @@ def scope_for(root,kind,project,*,integrated=False):
             if data.get('workspaces'):return ['.']
             deps={**(data.get('dependencies') or {}),**(data.get('devDependencies') or {})}
             if any(isinstance(x,str) and x.startswith(('file:','link:','workspace:')) for x in deps.values()):return ['.']
-        descriptor=folder/('gaston-e2e.json' if kind=='api' else 'gaston-verification.json')
+        descriptor=folder/('gaston-e2e.json' if kind=='api' else 'gaston-web-e2e.json' if kind in ('web','visual_web') else 'gaston-verification.json')
         if descriptor.is_symlink():return ['.']
-        if kind=='api' and not descriptor.is_file():return ['.']
-        extra=json.loads(descriptor.read_text(encoding='utf-8')).get('read_projects',[]) if descriptor.is_file() else []
+        if kind in ('api','web','visual_web') and not descriptor.is_file():return ['.']
+        data=json.loads(descriptor.read_text(encoding='utf-8')) if descriptor.is_file() else {}
+        extra=data.get('read_projects',[])
+        if kind in ('web','visual_web'):
+            # Explicit managed relationship, never parallelize unknown external URLs.
+            backend=data.get('backend_project')
+            if not isinstance(backend,str) or not isinstance(extra,list):return ['.']
+            extra=[backend,*extra]
         if not isinstance(extra,list) or any(_safe_project(root,x) is None for x in extra):return ['.']
         return sorted(set([folder.relative_to(root).as_posix(),*extra]))
     except (OSError,ValueError,ET.ParseError,TypeError,AttributeError):return ['.']

@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import shutil
 import socket
+import subprocess
 from urllib.parse import urlparse
 
 import workspace_checks
@@ -157,3 +158,22 @@ def run_browser(root, project, *, execute, external_url=None, visible=False):
         return {**run(external_url),'lifecycle':'external_loopback'}
     return {'status':'blocked','project':project,
             'reason':'No isolated startup contract: configure Playwright webServer or gaston-web-e2e.json with backend_project. Do not restart Lead or export variables to repair this.'}
+
+
+def execute_owned(argv, *, cwd, env, timeout):
+    """Playwright webServer and browser processes belong to this invocation."""
+    from platform_compat import popen_kwargs, stop_owned
+    proc=None
+    result={'exit_code':None}
+    try:
+        proc=subprocess.Popen(argv,cwd=cwd,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,**popen_kwargs())
+        out,err=proc.communicate(timeout=timeout)
+        result.update(exit_code=proc.returncode,stdout=out[-9000:],stderr=err[-9000:])
+    except (OSError,subprocess.TimeoutExpired) as exc:
+        result['reason']=type(exc).__name__
+    finally:
+        if proc:
+            try:stop_owned(proc,isolated_group=True)
+            except (OSError,RuntimeError,subprocess.TimeoutExpired):
+                result.update(exit_code=None,reason='Owned browser process cleanup failed')
+    return result
