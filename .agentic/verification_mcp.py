@@ -74,7 +74,7 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
     {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Allow the native MCP client to background this call and deliver its result. Do not use short periodic waits. Does not start tests or repair.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
-    {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. Use current evidence and do not rerun unchanged gates.',
+    {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
     {'name':'task_acceptance_report','description':'Compare real recorded backend/API/web/mobile checks against the task risk-based plan; expose missing checks and any untested cross-component paths.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
@@ -175,11 +175,11 @@ for _tool in TOOLS:
         _tool['description']='Send one root-cause-based focused correction delta; after two unsuccessful correction rounds the Lead must repair directly. Quota/interruption resumes do not consume a correction round. Environment diagnosis belongs to Lead.'
         _tool['inputSchema']['properties'].update(failure_kind={'type':'string','enum':['implementation','architecture','specification','test_fixture','environment','regression']},root_cause=_str,reproduction=_str)
 
-def execute(argv, *, cwd=None, env=None, timeout=60):
+def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
     try:
         result = subprocess.run(argv, cwd=cwd or ROOT, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, timeout=timeout, check=False)
-        return {'exit_code':result.returncode, 'stdout':result.stdout[-9000:], 'stderr':result.stderr[-9000:]}
+        return {'exit_code':result.returncode, 'stdout':result.stdout[-output_limit:], 'stderr':result.stderr[-output_limit:]}
     except subprocess.TimeoutExpired as exc:
         return {'exit_code':None, 'reason':'timeout', 'timeout_seconds':timeout,
                 'stderr':str(exc)[-1000:]}
@@ -188,14 +188,18 @@ def execute(argv, *, cwd=None, env=None, timeout=60):
 
 
 def sdk_tool(name):
+    executable = name + '.exe' if os.name == 'nt' else name
     for key in ('ANDROID_HOME','ANDROID_SDK_ROOT'):
         sdk = os.environ.get(key)
         if sdk:
-            candidate = Path(sdk)/('emulator' if name == 'emulator' else 'platform-tools')/name
+            candidate = Path(sdk)/('emulator' if name == 'emulator' else 'platform-tools')/executable
             if candidate.is_file(): return str(candidate)
     home = Path.home()
-    for root in (home/'Android/Sdk',home/'Library/Android/sdk'):
-        candidate = root/('emulator' if name == 'emulator' else 'platform-tools')/name
+    roots = [home/'Android/Sdk', home/'Library/Android/sdk']
+    if os.environ.get('LOCALAPPDATA'):
+        roots.append(Path(os.environ['LOCALAPPDATA'])/'Android/Sdk')
+    for root in roots:
+        candidate = root/('emulator' if name == 'emulator' else 'platform-tools')/executable
         if candidate.is_file(): return str(candidate)
     return shutil.which(name)
 
@@ -618,10 +622,12 @@ def start_existing_emulator(name=''):
                     note='Call environment_status to confirm adb connects before Maestro runs')
 
 
-def _run_maestro_tests_impl(relative_path='.maestro'):
+def _run_maestro_tests_impl(relative_path='.maestro', *, expected_device=None, cwd=None):
     devices=connected_emulators()
     if len(devices) != 1:
         return response('blocked', reason='Exactly one connected Android emulator is required; physical devices are not used',devices=devices)
+    if expected_device is not None and devices != [expected_device]:
+        return response('blocked', reason='Selected Android emulator changed', devices=devices)
     maestro=shutil.which('maestro') or str(Path.home()/'.maestro/bin/maestro')
     if not Path(maestro).is_file() and not shutil.which(maestro):
         return response('blocked',reason='Maestro CLI not found')
@@ -632,8 +638,8 @@ def _run_maestro_tests_impl(relative_path='.maestro'):
         return response('blocked',reason='Maestro flow must be an existing YAML file or directory inside the workspace')
     # Maestro's documented global --device flag must precede `test`.
     result=execute([maestro,'--device',devices[0],'test',str(candidate)],
-                   cwd=ROOT,timeout=300)
-    return response('pass' if result['exit_code']==0 else 'fail',device=devices[0],evidence=result)
+                   cwd=cwd or ROOT,timeout=300)
+    return response('pass' if result['exit_code']==0 else 'blocked' if result['exit_code'] is None else 'fail',device=devices[0],evidence=result)
 
 def run_maestro_tests(relative_path='.maestro'):
     try:
@@ -642,6 +648,47 @@ def run_maestro_tests(relative_path='.maestro'):
         # Cleanup also runs if test validation or execution unexpectedly raises.
         cleanup=finish_mobile_verification()
     return {**result, 'emulator_cleanup':cleanup}
+
+
+def _mobile_failure_screenshot(device, adb):
+    """Save only a bounded emulator screenshot in private Gaston state."""
+    if not adb or not re.fullmatch(r'emulator-\d+', device) or connected_emulators() != [device]:
+        return None
+    try:
+        capture = subprocess.run([adb, '-s', device, 'exec-out', 'screencap', '-p'],
+                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                 timeout=15, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    data = capture.stdout
+    if capture.returncode or not data.startswith(b'\x89PNG\r\n\x1a\n') or len(data) > 16 * 1024 * 1024:
+        return None
+    folder = LOCAL / 'mobile-evidence'
+    if folder.resolve() != folder.absolute():
+        return None
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (uuid.uuid4().hex + '.png')
+    with path.open('xb') as stream:
+        stream.write(data)
+    return path.relative_to(ROOT).as_posix()
+
+
+def run_project_mobile_tests(project=None, relative_path=None):
+    import workspace_checks
+    import mobile_acceptance
+    _, discovered = workspace_checks.discover(ROOT, {})
+    projects = discovered.get('flutter', [])
+    if not projects:
+        # Preserve the non-Flutter Maestro workflow.
+        return run_maestro_tests(relative_path or ((project+'/.maestro') if project and project!='.' else '.maestro'))
+    if project is None and len(projects) == 1:
+        project = projects[0]
+    if project not in projects:
+        return response('blocked', reason='Select a discovered Flutter application', projects=projects)
+    return mobile_acceptance.run(ROOT, project, relative_path, execute=execute,
+        sdk_tool=sdk_tool, avd_names=avd_names, start_emulator=start_existing_emulator,
+        finish_emulator=finish_mobile_verification, maestro_run=_run_maestro_tests_impl,
+        screenshot=_mobile_failure_screenshot)
 
 
 LIVE_SERVER = False
@@ -1333,7 +1380,7 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
             evidence=execute(['flutter','test' if kind=='flutter_tests' else 'analyze'],cwd=ROOT/project,timeout=600)
             result=response('pass' if evidence['exit_code']==0 else 'blocked' if evidence['exit_code'] is None else 'fail',project=project,evidence=evidence)
     else:
-        result=run_maestro_tests(relative_path or ((project+'/.maestro') if project and project!='.' else '.maestro'))
+        result=run_project_mobile_tests(project, relative_path)
     params={'project':project or result.get('project'),'test_filter':test_filter,'relative_path':relative_path}
     if env_digest:params['environment_fingerprint']=env_digest
     if workspace_before:
