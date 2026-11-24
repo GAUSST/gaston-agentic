@@ -77,7 +77,7 @@ def _central_init() -> int:
     if spec is None or spec.origin is None or Path(spec.origin).resolve().is_relative_to(target):
         raise RuntimeError('A trusted, externally installed Gaston engine is required')
     from gaston_engine.project_layout import initialize_project
-    root, created = initialize_project(target, engine_version=metadata.version('gaston-agentic-cli'))
+    root, created = initialize_project(target, engine_version=(os.environ.get('GASTON_ACTIVE_VERSION') or ('v' + metadata.version('gaston-agentic-cli'))).removeprefix('v'))
     if created:
         print('Gaston central project adapter created: ' + str(root / '.gaston/project.json'))
     else:
@@ -138,7 +138,7 @@ def _central_migrate(root: Path) -> int:
 def _managed_bootstrap() -> int | None:
     """Dispatch through a verified, immutable global engine release when present.
 
-    This stable entry point is installed once via pip/pipx. Later signed updates
+    This stable entry point is installed once by the per-user Gaston installer. Later signed updates
     activate a separate version folder without rewriting a running package or
     touching a project. A corrupt pointer fails closed instead of falling back
     to unverified source.
