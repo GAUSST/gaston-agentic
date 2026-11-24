@@ -45,7 +45,7 @@ def find_project(start: Path, *, allow_new: bool = False) -> tuple[Path, str]:
 
 PROJECT_MARKER_KIND = 'gaston-project'
 ENGINE_NAME = 'gaston-agentic-cli'
-ENGINE_VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+
+ENGINE_VERSION = re.compile(r'^[0-9]+\.[0-9]+\.[0-9]+$')
 
 
 def read_project_marker(root: Path) -> dict:

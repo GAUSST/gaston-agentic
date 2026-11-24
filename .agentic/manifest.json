@@ -106,7 +106,7 @@
     "docs/UPDATES.md": "0123b6fece2ea9c041c80551fe47b221923be6541f59781cba77dc1463e7022d",
     ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34",
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
-    ".agentic/project_layout.py": "fbb9b5a048d6428f03b6fe67f7db64c46b6d092ca36a537c7d6cc5db24372209",
+    ".agentic/project_layout.py": "66059735aa886d55787dc9fb0cf5f9495162708d933d4c153db88e39cab6c342",
     ".agentic/test_project_layout.py": "112815115d12d66de5833a4a2f73c8c0ada7adc99601cd323be7d79655f30edc",
     ".agentic/__init__.py": "580783cdb23f64de5579d7da91c6e6ff454d54be54d7dadf3eb5990f342e9e23",
     "docs/CENTRAL_ENGINE_MIGRATION.md": "31bac63652a11e33ba3ce8d521b6307154f701e8945660225b000833201dfd55",
