@@ -102,6 +102,24 @@ class CentralProjectBootstrapTests(unittest.TestCase):
         self.assertEqual(self.dev('init').returncode, 0)
         self.assertEqual(state.read_text(encoding='utf-8'), 'product history')
 
+    def test_default_dev_init_creates_source_free_adapter(self):
+        self.env.pop('GASTON_ENGINE_MODE')
+        self.assertEqual(self.dev('init').returncode, 0)
+        self.assertTrue((self.project / '.gaston/project.json').is_file())
+        self.assertFalse((self.project / '.agentic').exists())
+        result = self.dev('--help')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_default_dev_preserves_legacy_project(self):
+        self.env.pop('GASTON_ENGINE_MODE')
+        legacy = self.project / '.agentic'
+        legacy.mkdir()
+        (legacy / 'launcher.py').write_text(
+            'def main():\n    return 0\n', encoding='utf-8')
+        result = self.dev('--help')
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.project / '.gaston').exists())
+
     def test_linked_adapter_directory_is_rejected(self):
         target = self.project / 'somewhere'
         target.mkdir()
