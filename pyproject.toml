@@ -14,3 +14,10 @@ dev = "gaston_cli:main"
 
 [tool.setuptools]
 py-modules = ["gaston_cli"]
+packages = ["gaston_engine"]
+
+[tool.setuptools.package-dir]
+gaston_engine = ".agentic"
+
+[tool.setuptools.package-data]
+gaston_engine = ["policies/*.md"]

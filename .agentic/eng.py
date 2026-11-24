@@ -37,7 +37,8 @@ import token_intelligence as ti
 import serena_tools
 from native_hooks import install_native_hooks, installed as native_hooks_installed, LOCAL as HOOK_LOCAL, session_active
 
-ROOT = Path(__file__).resolve().parent.parent
+from project_layout import project_root
+ROOT = project_root()
 CFG_FILE = ROOT / '.agentic' / 'config.json'
 RUNS = ROOT / '.agentic' / 'runs'
 TASKS = ROOT / '.agentic' / 'tasks'

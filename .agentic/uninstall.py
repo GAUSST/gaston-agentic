@@ -19,6 +19,7 @@ MANIFEST = '.agentic/manifest.json'
 KNOWN_ROOTS = frozenset({
     '.github/workflows/native-cli-validation.yml', '.github/workflows/release.yml', 'dev', 'gaston_cli.py', 'pyproject.toml', 'README.md', 'AGENTS.md', 'CLAUDE.md', '.gitignore', '.gitattributes',
     'docs/LESSONS.md', 'docs/UPDATES.md', 'docs/BACKEND_VERIFICATION.md',
+    'docs/CENTRAL_ENGINE_MIGRATION.md',
     'docs/TEST_PLAN_FROM_CURRENT_STATE.md', 'docs/VERIFICATION.md',
     'docs/LEAD_WORKSPACE_OPERATIONS.md', 'docs/RELEASE_V28.md',
 })

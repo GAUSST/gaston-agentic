@@ -19,6 +19,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install installed CLI
         run: python -m pip install .
+      - name: Verify centrally packaged engine
+        run: python -c "import gaston_engine; from pathlib import Path; p=Path(gaston_engine.__file__).resolve().parent; assert (p/'eng.py').is_file(); assert (p/'native_hooks.py').is_file(); assert p != Path.cwd()/'.agentic'"
       - name: CLI executable from PATH
         run: dev --help
       - name: Native locking and dispatcher tests
