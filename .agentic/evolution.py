@@ -530,12 +530,25 @@ def launch(root,args):
     Windows cannot execv while retaining an inherited shared lock; the
     launcher holds that kernel lock while waiting on its child CLI instead.
     """
-    from platform_compat import open_lock, lock_fd, unlock_fd
     root=Path(root).resolve()
+    if os.environ.get('GASTON_ENGINE_MODE') == 'central':
+        # Read-only preview: do not open or create workspace evolution locks.
+        # On Windows, opening the legacy lock can fail with PermissionError
+        # even when no tool update is requested. There is no evolution to
+        # coordinate for --help; run the centrally packaged entrypoint only.
+        if list(args) != ['--help']:
+            raise RuntimeError('Central preview supports dev --help only')
+        completed = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / 'eng.py'), '--help'],
+            cwd=root, check=False)
+        if completed.returncode:
+            raise SystemExit(completed.returncode)
+        return
+    from platform_compat import open_lock, lock_fd, unlock_fd
     path=safe(root,'.agentic/local/evolution-launch.lock')
     fd=open_lock(path)
     try:
-        if not args and os.environ.get('GASTON_ENGINE_MODE') != 'central':
+        if not args:
             try:
                 lock_fd(fd,nonblocking=True)
             except BlockingIOError:
@@ -568,12 +581,7 @@ def launch(root,args):
         try:
             if (store(root)/'journal.json').exists():
                 raise RuntimeError('Interrupted evolution requires recovery. Close managed sessions and restart dev.')
-            # Central preview executes installed core code, never a project-supplied
-            # .agentic/eng.py. Sidecar/hooks migration remains a separate gate.
-            executable = (Path(__file__).resolve().parent / 'eng.py'
-                          if os.environ.get('GASTON_ENGINE_MODE') == 'central'
-                          else root / '.agentic/eng.py')
-            command=[sys.executable,str(executable),*args]
+            command=[sys.executable,str(root/'.agentic/eng.py'),*args]
             if os.name=='nt':
                 completed=subprocess.run(command,cwd=root)
                 if completed.returncode:

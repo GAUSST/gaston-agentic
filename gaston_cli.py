@@ -39,8 +39,10 @@ def _central_launch(root: Path) -> int:
     version = metadata.version('gaston-agentic-cli')
     if manifest.get('build') != version:
         raise RuntimeError('Central preview requires installed engine and workspace toolkit to have the same version')
-    if len(sys.argv) > 1 and sys.argv[1] in ('update', 'uninstall'):
-        raise RuntimeError('Central preview cannot update or uninstall a legacy workspace; use GASTON_ENGINE_MODE=legacy')
+    # Until hooks, MCP helpers and project state move to central ownership,
+    # central preview is read-only. Never execute incomplete runtime flows.
+    if sys.argv[1:] != ['--help']:
+        raise RuntimeError('Central preview supports dev --help only; use GASTON_ENGINE_MODE=legacy for all other commands')
 
     spec = util.find_spec('gaston_engine')
     if spec is None or spec.origin is None:

@@ -20,7 +20,7 @@
 - Python wheel includes all core modules under `gaston_engine` next to the native `dev` executable, so engine code can live outside application repositories.
 - `project_layout` makes project versus engine path boundaries explicit, recognizes legacy and future central project markers and does not initialize projects implicitly.
 - New layout and packaging tests; CI verifies that installed wheels contain engine modules on all three systems.
-- The installed CLI retains legacy dispatch by default. For matching-version existing workspaces only, `GASTON_ENGINE_MODE=central dev --help` executes the installed launcher and `eng.py` instead of the project's copies. It rejects uninitialized projects and blocks update/uninstall in preview mode. Automatic local evolution activation is disabled in preview mode.
+- The installed CLI retains legacy dispatch by default. For matching-version existing workspaces only, `GASTON_ENGINE_MODE=central dev --help` executes the installed launcher and `eng.py` instead of the project's copies. **Only `--help` is allowed in central preview**; all stateful operations are refused. The read-only preview bypasses workspace evolution locks (fixing Windows permission failures), refuses uninitialized projects and does not trigger local evolution.
 - The Linux full-suite test now locates the actual installed engine package instead of reading source-relative `.egg-info` file lists, which incorrectly failed PR #6's post-merge CI.
 
 **Do not manually delete `.agentic` or tag v1.6 until remaining gates pass.** The core execution preview does not yet repoint sidecar scripts, hooks, provider integrations, central updates or project state; it must not be used as evidence that source-free projects are functional.

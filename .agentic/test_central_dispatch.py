@@ -51,6 +51,8 @@ class CentralDispatchTests(unittest.TestCase):
         self.assertIn('Commands:', result.stdout)
         self.assertNotIn('PROJECT LOCAL', result.stdout + result.stderr)
         self.assertFalse((self.project / '.agentic/evolution.py').exists())
+        self.assertFalse((self.project / '.agentic/local').exists(),
+                         'read-only preview must never create a legacy evolution lock')
         self.assertFalse((self.project / '.gaston').exists())
 
     def test_version_mismatch_fails_closed(self):
@@ -60,13 +62,16 @@ class CentralDispatchTests(unittest.TestCase):
         self.assertIn('same version', result.stderr)
         self.assertFalse((self.project / '.gaston').exists())
 
-    def test_preview_rejects_updater_and_uninstaller(self):
-        for operation in ('update', 'uninstall'):
-            with self.subTest(operation=operation):
-                result = self.cli(operation)
+    def test_preview_only_allows_help(self):
+        for arguments in (('update',), ('uninstall',), ('models',),
+                          ('sessions',), ('init',), ()):
+            with self.subTest(arguments=arguments):
+                result = self.cli(*arguments)
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                self.assertIn('cannot update or uninstall', result.stderr)
+                self.assertIn('supports dev --help only', result.stderr)
                 self.assertTrue(self.manifest.is_file())
+                self.assertFalse((self.project / '.agentic/local').exists())
+                self.assertFalse((self.project / '.gaston').exists())
 
     def test_uninitialized_project_not_auto_initialized(self):
         (self.project / '.agentic/launcher.py').unlink()
