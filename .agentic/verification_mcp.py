@@ -860,7 +860,7 @@ def request_builder_revision(task_id, feedback, specification_files=None, risk='
         return response('blocked',reason='Specify concrete local correction instructions')
     try:spec_paths=_spec_paths(specification_files)
     except (OSError,ValueError) as exc:return response('blocked',reason=str(exc))
-    folder=STATE/'runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():
         return response('blocked',reason='Unknown task')
     import runtime_recovery
@@ -1001,7 +1001,7 @@ def verify_delegated_backend_task(task_id, project, test_filter, reviewed=False,
         return response('blocked', reason='Lead MCP authorization missing')
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):
         return response('blocked',reason='Invalid task ID')
-    folder=STATE/'runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():
         return response('blocked',reason='Unknown task')
     if reviewed is not True or not isinstance(review_notes,str) or not review_notes.strip():
@@ -1167,7 +1167,7 @@ def finalize_delegated_task(task_id,reviewed=False,review_notes='',deleted_paths
 
 def _task_folder(task_id):
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):return None
-    folder=STATE/'runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():return None
     return folder
 
@@ -1410,7 +1410,7 @@ def delegation_status(task_id):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):
         return response('blocked',reason='Invalid task ID')
-    folder=STATE/'runs'/task_id
+    folder=project_state(ROOT)/'runs'/task_id
     if not (folder/'task.json').is_file():return response('blocked',reason='Unknown task')
     def read(name):
         try:return json.loads((folder/name).read_text(encoding='utf8'))
@@ -1464,7 +1464,7 @@ def _orchestration_action(action, args):
             import task_runtime
             report=orch.plan_status(ROOT,args.get('plan_id'))
             ids=list(dict.fromkeys([x['task_id'] for x in report['items'] if x.get('task_id')]+([report['checkpoint_task_id']] if report.get('checkpoint_task_id') else [])))
-            data=[task_runtime.task_metrics(STATE/'runs'/tid) for tid in ids]
+            data=[task_runtime.task_metrics(project_state(ROOT)/'runs'/tid) for tid in ids]
             return response('ready',plan_id=report['plan_id'],tasks=data,codex_usage_reported_tasks=sum(x['provider_usage']['tokens'] is not None for x in data),note='Only CLI-reported token counts. Unreported provider/Lead usage and savings remain unknown.')
         if action=='extend':return orch.extend_plan(ROOT,args.get('plan_id'),args.get('items'))
         if action=='inspect':return orch.inspect_files(ROOT,args.get('files'))
@@ -1621,11 +1621,11 @@ def prepare_checkpoint_acceptance(args):
         plan['checkpoint_task_id']=ids[0];orch.put(orch.plan_file(ROOT,pid),plan)
         return response('ready',task_id=ids[0],work_plan=orch.plan_status(ROOT,pid),note='One fully verified slice; reuse its current acceptance without rerun')
     paths=set()
-    for tid in ids:paths.update(orch.read_record(STATE/'runs'/tid/'build.json').get('changed_files',[]))
+    for tid in ids:paths.update(orch.read_record(project_state(ROOT)/'runs'/tid/'build.json').get('changed_files',[]))
     if not paths:raise ValueError('No recorded changed files for integrated verification')
     reviewed_docs=set()
     for source_id in ids:
-        source_folder=STATE/'runs'/source_id
+        source_folder=project_state(ROOT)/'runs'/source_id
         reviewed_docs.update(orch.read_record(source_folder/'lead-documentation-review.json').get('documents',{}))
         reviewed_docs.update(x['original_path'] for x in orch.read_record(source_folder/'task.json').get('specifications',[]) if isinstance(x,dict) and isinstance(x.get('original_path'),str))
     reviewed_docs=set(documentation_review.required_paths(reviewed_docs))
