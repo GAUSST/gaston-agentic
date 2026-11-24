@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.2",
+  "release": "v1.6.3",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "d60ad7185be86b6738c28104b327e71ad550cf79e50410c1b8c27ef7840e216f",
@@ -13,7 +13,7 @@
     ".agentic/development_db.py": "7e24a4359d0c8f939b4e73c9a035695ee090e950e6e43272d218c889fb6d6048",
     ".agentic/documentation_review.py": "3bf8681cbdc9b66ea79efb1352e3e8103f6ccc5ac154ac41bc4aabb2f05699d2",
     ".agentic/efficiency_runtime.py": "24c239f35c9e83d29c19baee4197d4d428b4fa60e25ea66560e25729d3276c15",
-    ".agentic/eng.py": "672062ff654e13d3449afc6b69ab7b02f1d776997f87fe97bf2212a18ab32f1c",
+    ".agentic/eng.py": "1de61d6b2e2a749a602b73e4e2923d8db926d7964b7a5f5bd12fa4981cdd7e97",
     ".agentic/evidence_efficiency.py": "1b17d96a3fabe1456b65c1ae2d726d679ddca0c84ec94aa0a55c2a0b74724166",
     ".agentic/evolution.py": "e55e7f8d11307c2e79fb5dd10052dea1ddbc8f5ab8b5e1bdf0c045e15ecb4727",
     ".agentic/hook_worker.py": "3bd46d027ceabc616f83ee749daa1d5ce95ee12c357301adcb6d3f0be5f75dce",
@@ -25,7 +25,7 @@
     ".agentic/live_builder_worker.py": "f75ce28178e6a7edd90bd5ee6884aa1dc1465ccc34571059db36c8e44473ba20",
     ".agentic/managed_backend.py": "aad2b223d3f7ae9de189202d0cae0349a323d5aed5cfdc7ddfad6e40be96e776",
     ".agentic/model_menu.py": "0cfc024c0752513b261afd8c90d9474f3e9b74f674b8e42e60891b4168e1e665",
-    ".agentic/native_hooks.py": "98b997745e1f1860a1f53354d961b940d8dd2fd8dc3e5d93aff1cdcf48b454de",
+    ".agentic/native_hooks.py": "c4ec0e34ccef84858f62eb52eadf407a7c03621ecefd32cf6197488ab4774bdd",
     ".agentic/orchestration.py": "566e50525aa50419b3fd508ddf4f3c9b09ead140dc4f835857d0e61a4ad4c972",
     ".agentic/pipeline_worker.py": "81f55abdd01abde237c5d0f29bb20cb4e0ad2ac21ae14b89c1c64c91da1f8337",
     ".agentic/platform_compat.py": "c65abb0d09038f4199f8855bd8cefd13a79515021d6ff9d07c65fee0baee43de",
@@ -80,7 +80,7 @@
     ".agentic/token_intelligence.py": "ac7491360c90904bf65ae576f56f75cb6df807864769cd877b223cfd0ab35424",
     ".agentic/uninstall.py": "060c343c31af86feb5d452f71f8f67ad26ade28c4129eb4a186d4caafdd3c2cc",
     ".agentic/verification_brief.py": "e408551000a99be068ceb3917d806f75292a0135e3e37a9e343304148e1cef7d",
-    ".agentic/verification_mcp.py": "c04860194af772a8da8bc5bdd1b91027355127d8cf0b557f5ae220ff7dbb7c9d",
+    ".agentic/verification_mcp.py": "7aece9feedfd5f35e5092d4df2803bb2fb5fba432a2be913bbda185ae439df87",
     ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
     ".agentic/workspace_checks.py": "6d6e4e8cd8cca962ae1fb9143167e294d7c989bc775f432d0104fc8edb983bf5",
     ".agentic/workspace_git.py": "002140e779f2ec6b9e2df251c7bea76b3321e2de73d69cde37b63a03f1dc13c5",
@@ -90,16 +90,16 @@
     ".claude/skills/independent-review/SKILL.md": "8d47180b5fc2bcd704777fd4f52978e0b55bf0267f456f6c3ae2d46e0dc4fe9b",
     ".github/workflows/native-cli-validation.yml": "074c7e8b84b928580bfc3203806d8253b6ea6ab6849ca953cb218c45331a50f9",
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
-    "AGENTS.md": "f9bdc3a672c5d51efca4dd7c2602f6bae1cb702169ae474f8e230788c77b6e4e",
+    "AGENTS.md": "2e4f62478686928983bb964d89dfcd9de16b0b76c4ad6f34f32b86d7944a6f59",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "cb10ca2eb8b16d4032211d186d1b7ad330180bfc345f3b4847a89791703e8157",
+    "README.md": "08c8b4b983dc807667516ffeb82d6f79cc37c6b954b6070e19a041fe240eb5d8",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
     "gaston_cli.py": "8db30efec391720c5d402b65411272469ed1c39ef7dba9f5db7f94191e03e7e8",
-    "pyproject.toml": "215b517799c69fee5f45240371c0184209d2970b7728f14dcb4423588588d5d0",
+    "pyproject.toml": "02af4ceca529f441203c96e653c5a0e249478be2fe08d062de8c109ec2821e5e",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
@@ -122,7 +122,9 @@
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
     ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
     ".agentic/mobile_acceptance.py": "210a443272527e7d72fa5a10cf7b61e4de3e547b134edb568a02ba49d9f155e4",
-    ".agentic/test_central_mobile_acceptance.py": "d04f9e64e514c37974475560442d675b07d32be73a395705953cdf295f5284c3"
+    ".agentic/test_central_mobile_acceptance.py": "d04f9e64e514c37974475560442d675b07d32be73a395705953cdf295f5284c3",
+    ".agentic/wait_guard.py": "dc26bebd423914ea2c45c54ff2124fc9e2ebd38a6c5c56d32818edae00021d5c",
+    ".agentic/test_central_wait_guard.py": "152b60eb20c9a6cb10a4563a9a87f544e7df88a404c295754475864fdcdb194b"
   },
-  "build": "1.6.2"
+  "build": "1.6.3"
 }

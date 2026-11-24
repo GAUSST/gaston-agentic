@@ -195,6 +195,50 @@ def claude_write_guard_configured(root: Path) -> bool:
     return False
 
 
+def refresh_central_claude_hooks(root: Path) -> bool:
+    """Retarget previously configured Gaston Claude hooks after activation."""
+    if not central_mode():
+        return False
+    from central_update import home
+    from importlib import metadata
+    from platform_compat import parse_command
+    path = Path(root).resolve() / '.claude/settings.local.json'
+    if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+        if data.get('disableAllHooks'):
+            return False
+        current = runtime_script('native_hooks.py').resolve()
+        base = Path(metadata.distribution('gaston-agentic-cli').locate_file('gaston_engine/native_hooks.py')).resolve()
+        versions = home() / 'versions'
+        changed = False
+        for event in ('SessionStart', 'SessionEnd', 'PreToolUse', 'Stop'):
+            for group in data.get('hooks', {}).get(event, []):
+                for hook in group.get('hooks', []):
+                    if hook.get('type') != 'command':
+                        continue
+                    args = parse_command(hook.get('command', ''))
+                    if len(args) != 3 or args[-1] != 'claude':
+                        continue
+                    old = Path(args[1])
+                    if not old.is_absolute() or old.resolve() != old or old == current:
+                        continue
+                    known = old == base
+                    if old.is_relative_to(versions):
+                        parts = old.relative_to(versions).parts
+                        known = len(parts) == 3 and bool(re.fullmatch(r'v\d+\.\d+\.\d+', parts[0])) and parts[1:] == ('gaston_engine', 'native_hooks.py')
+                    if not known or not old.is_file():
+                        continue
+                    hook['command'] = hook_def('claude', event, str(current))['command']
+                    changed = True
+        if changed:
+            atomic_json(path, data)
+        return changed
+    except (OSError, ValueError, TypeError, AttributeError, metadata.PackageNotFoundError):
+        return False
+
+
 def receive(provider: str, event: dict) -> str:
     """Return a brief status for tests; hook CLI prints nothing to models."""
     role=registered_role(provider,event)
@@ -247,6 +291,11 @@ def receive(provider: str, event: dict) -> str:
     if kind == 'PreToolUse' and role == 'reviewer':
         if event.get('tool_name') in ('CronCreate','mcp__gaston_verify__record_quota_recovery_job'):
             print('Use Gaston quota_recovery_decision for consented Builder-only recovery; no native Lead fork.',file=sys.stderr)
+            raise SystemExit(2)
+        import wait_guard
+        reason = wait_guard.shell_reason(ROOT, os.environ.get('GASTON_SESSION_LEASE'), event)
+        if reason:
+            print(reason, file=sys.stderr)
             raise SystemExit(2)
         block_native_reviewer_tool(event)
         return 'allowed-tool'
@@ -324,8 +373,9 @@ def command_line():
                     and os.environ.get('GASTON_SESSION_LEASE')):
                 from session_store import Store
                 if not Store(ROOT).lead_caller(os.environ.get('GASTON_SESSION_LEASE'),args.provider,os.getpid()):return
+                from wait_guard import stop_reason
                 from efficiency_runtime import stop_advisory
-                reason=stop_advisory(ROOT,args.provider,event['session_id'])
+                reason=stop_reason(ROOT,os.environ.get('GASTON_SESSION_LEASE')) or stop_advisory(ROOT,args.provider,event['session_id'])
                 if reason:print(json.dumps({'decision':'block','reason':reason}))
     except (OSError, ValueError, TypeError):
         return

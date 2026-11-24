@@ -72,7 +72,7 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'feedback':{'type':'string','description':'Complete reviewed implementation defects and requested edits'},'specification_files':{'type':'array','items':{'type':'string'},'description':'Optional additional workspace-relative specification documents'},'risk':{'type':'string','enum':['normal','high']}},'required':['task_id','feedback'],'additionalProperties':False}},
     {'name':'verify_delegated_backend_task','description':'Record independent backend test results and code review, reusing current results when available. A backend pass alone never finalizes a task with incomplete required gates. Run other gates and finalize separately.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
-    {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Allow the native MCP client to background this call and deliver its result. Do not use short periodic waits. Does not start tests or repair.',
+    {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Call this MCP tool directly; the native client may manage its own background execution. Never create a Bash watcher, sleep loop or background shell. Do not end with a progress-only response instead of this call. Does not start tests or repair.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
     {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
@@ -751,6 +751,8 @@ def _launch_builder(folder, *, revision=0):
             orch.put(folder/'worker-finished.json', {'finished_at':time.time(), 'stage':'blocked','revision':revision})
             return None
     orch.put(folder/'worker.json', {'pid':proc.pid, 'started_at':started_at, 'attempt':attempt, 'host':socket.gethostname(), **process_identity(proc.pid)})
+    import wait_guard
+    wait_guard.begin(folder, attempt, os.environ.get('GASTON_SESSION_LEASE'))
     return proc.pid
 
 
@@ -892,7 +894,7 @@ def delegate_to_builder(goal, acceptance_criteria=None, risk='normal', specifica
     if pid is None:
         return response('blocked',task_id=task_id,reason='Could not start the Builder worker; resume same task after diagnosing environment')
     return response('queued',task_id=task_id,worker_pid=pid,
-                    toolkit_release=TOOLKIT_RELEASE,toolkit_build=TOOLKIT_BUILD,next_step='Perform independent ready Lead inspections and disjoint test setup now; register one background completion wait only as needed. Review then verify this slice.',work_plan=orch.plan_status(ROOT,plan_id) if plan_id else None)
+                    toolkit_release=TOOLKIT_RELEASE,toolkit_build=TOOLKIT_BUILD,next_step='Perform independent ready Lead inspections and disjoint test setup now; call wait_for_builder with this task ID exactly once; never use a shell watcher or end the turn before collecting the outcome. Review then verify this slice.',work_plan=orch.plan_status(ROOT,plan_id) if plan_id else None)
 
 
 def request_builder_revision(task_id, feedback, specification_files=None, risk='normal', *, failure_kind=None, root_cause=None, reproduction=None):
@@ -958,7 +960,7 @@ def request_builder_revision(task_id, feedback, specification_files=None, risk='
     if pid is None:
         return response('blocked',task_id=task_id,reason='Could not start correction worker; same task preserved')
     return response('queued',task_id=task_id,revision=number,worker_pid=pid,
-                    toolkit_release=TOOLKIT_RELEASE,toolkit_build=TOOLKIT_BUILD,correction_round=correction,next_step='Continue unrelated Lead work; wait once for completion; independently review and verify the focused correction')
+                    toolkit_release=TOOLKIT_RELEASE,toolkit_build=TOOLKIT_BUILD,correction_round=correction,next_step='Complete independent Lead work; call wait_for_builder with this task ID, not Bash or sleep; collect the outcome, independently review and verify the focused correction')
 
 
 def _executed_backend(result):
@@ -1264,7 +1266,10 @@ def wait_for_builder(task_id, timeout_seconds=BUILDER_WAIT_SECONDS, *, cancel_ev
             with (folder/'wait-events.jsonl').open('a',encoding='utf8') as f:
                 f.write(json.dumps({'event':event,'time':time.time(),'release':TOOLKIT_RELEASE,'build':TOOLKIT_BUILD,**details})+'\n')
         except OSError:pass
-    trace('registered',requested_timeout=timeout_seconds,effective_timeout=BUILDER_WAIT_SECONDS)
+    import wait_guard
+    lease = os.environ.get('GASTON_SESSION_LEASE')
+    attempt = wait_guard.attach(folder, lease)
+    trace('registered',requested_timeout=timeout_seconds,effective_timeout=BUILDER_WAIT_SECONDS,attempt=attempt)
     started=time.monotonic()
     waited=task_runtime.wait_worker(folder,timeout_seconds=BUILDER_WAIT_SECONDS,cancel_event=cancel_event,progress=progress)
     if not _authorized_delegate():return response('blocked',reason='Lead ownership changed during wait; no settlement performed')
@@ -1276,7 +1281,8 @@ def wait_for_builder(task_id, timeout_seconds=BUILDER_WAIT_SECONDS, *, cancel_ev
     if waited.get('status')=='blocked' and remaining>0 and (cancel_event is None or not cancel_event.is_set()):
         retried=_retry_known_startup_failure(folder)
         if retried:
-            trace('native_retry',worker_pid=retried['worker_pid'])
+            attempt = wait_guard.attach(folder, lease)
+            trace('native_retry',worker_pid=retried['worker_pid'],attempt=attempt)
             waited=task_runtime.wait_worker(folder,timeout_seconds=remaining,cancel_event=cancel_event,progress=progress)
             if waited.get('builder_finished'):
                 runtime_recovery.recover(ROOT)
@@ -1290,7 +1296,8 @@ def wait_for_builder(task_id, timeout_seconds=BUILDER_WAIT_SECONDS, *, cancel_ev
             waited.update(resumable=True,provider_retry_hint=state.get('provider_retry_hint'),recovery=recovery,
                           next_action='Ask developer whether to schedule one-time recovery. Do not schedule without explicit yes; confirm timezone. If declined preserve task for manual resume.' if not recovery or recovery.get('decision')=='pending' else 'Respect recorded recovery decision; do not schedule again.')
         elif state.get('resumable'):waited.update(resumable=True,next_action='resume_builder')
-    trace('settled',status=waited.get('status'),builder_finished=waited.get('builder_finished'),elapsed=waited.get('elapsed_wait_seconds'))
+    wait_guard.finish(folder, lease, attempt, waited, cancelled=cancel_event is not None and cancel_event.is_set())
+    trace('settled',status=waited.get('status'),builder_finished=waited.get('builder_finished'),elapsed=waited.get('elapsed_wait_seconds'),attempt=attempt)
     return {**waited,'task_id':task_id,'toolkit_release':TOOLKIT_RELEASE,'toolkit_build':TOOLKIT_BUILD,'metrics':task_runtime.task_metrics(folder)}
 
 
