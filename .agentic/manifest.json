@@ -120,8 +120,7 @@
     ".agentic/test_central_migration.py": "07b74aad5fbf8d664cf98e031b780ef36067e153a8bd1171da57dbd66d155045",
     ".agentic/test_central_update.py": "86f62cc92c179a8ea686f093ea012c7bf0b6f70a258d90bc11e78ca45e048154",
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
-    ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
-    "docs/GUIDE_FR.md": "4b907a507becd7583bc1d8e66e1e01f23f17cc1e7480de3efae297e57be4d38c"
+    ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b"
   },
   "build": "1.6.1"
 }
