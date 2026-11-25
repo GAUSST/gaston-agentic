@@ -1847,6 +1847,11 @@ def chat_command(agent: str, handoff_after: bool=True, visual: bool=False, role:
     if role not in ('builder','reviewer') or prefs.get(role)!=agent:
         fail(f'{agent}/{role} is not an enrolled role in this project')
     ensure_local_context()
+    # Refresh version-pinned project hooks before any provider process starts,
+    # including the first Codex bootstrap session after an engine update.
+    if central_mode():
+        from native_hooks import refresh_central_provider_hooks
+        refresh_central_provider_hooks(ROOT)
     if role=='reviewer' and (LOCAL/'lead-checkpoint.json').is_file():
         with SESSIONS.locked(agent,role):
             if ti.maybe_rotate_lead(ROOT,SESSIONS,agent):print('Archived oversized Lead conversation at a safe checkpoint; continuing from saved project memory.',flush=True)
@@ -1867,9 +1872,6 @@ def chat_command(agent: str, handoff_after: bool=True, visual: bool=False, role:
         prompt=f'Read AGENTS.md. You are the persistent {role} for this project. Do not change files. Return status=received, summary=ready, questions=[], next_steps=[].'
         codex_structured(prompt,ACK_SCHEMA,path,model,'read-only',role='review' if role=='reviewer' else 'plan')
     with SESSIONS.locked(agent,role):
-        if central_mode():
-            from native_hooks import refresh_central_provider_hooks
-            refresh_central_provider_hooks(ROOT)
         existing=SESSIONS.get(agent,role)
         if agent=='codex':
             cmd=['codex',*(codex_lead_permission_args(interactive=True) if role=='reviewer' else codex_builder_permission_args('workspace-write',interactive=True)),
