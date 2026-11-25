@@ -19,29 +19,27 @@ installations.
 
 ## Maintainer release process
 
-1. Verify the release PR and require passing CI on the exact commit to release.
-   Publish only toolkit files, never application code, credentials, transcripts,
-   or private project state.
-2. Fetch the verified commit from main. Check that the manifest release and
-   build agree with pyproject.toml and the intended version.
-3. Using the maintainer's registered signing key, create a cryptographically
-   signed annotated tag for that exact commit (example for v1.6.1):
+1. Merge a release PR only after CI passes on the exact PR head commit.
+2. Keep `.agentic/manifest.json` release/build, `pyproject.toml` version and
+   release notes synchronized. Refresh every manifest SHA-256 entry for each
+   changed manifest-owned file. Run `python .agentic/release_audit.py` and
+   the full native CLI validation workflow.
+3. Merge the release PR. The `Publish verified main release` workflow runs
+   after successful validation of the current main commit. It checks that the
+   manifest version is newer than the latest published release, signs the
+   exact verified commit with the configured maintainer key, verifies the
+   GitHub-verified annotated tag, and publishes the GitHub Release.
+4. Confirm the publisher workflow succeeded and the new signed GitHub Release
+   is visible before asking users to update. A merged PR or a green PR check
+   alone does not make an update available.
+5. On an existing central installation, close active Gaston sessions and run
+   `dev update`. Approve the verified release, restart Gaston, and verify the
+   loaded engine version and preserved project context.
 
-   ```sh
-   git fetch origin main
-   git tag -s v1.6.1 VERIFIED_COMMIT_SHA -m "Gaston v1.6.1"
-   git push origin refs/tags/v1.6.1
-   ```
-
-   Replace VERIFIED_COMMIT_SHA with the exact reviewed commit SHA. Do not sign
-   a stale checkout, move existing release tags, or create unsigned tags.
-4. The existing release.yml workflow validates tag identity, the full manifest,
-   regression tests and installation smoke tests on Linux, macOS and Windows.
-   It verifies the signature before publishing a GitHub Release.
-5. On an existing v1.6.0 central installation, run `dev update` and approve
-   v1.6.1 only after the signed release has been published. Restart Gaston
-   and verify the loaded engine version and existing project context.
-   A merged PR alone is not an available update.
+The publisher workflow skips a release when the manifest version is not newer
+than the latest published release. If signing configuration is missing, the
+publisher fails rather than creating an unsigned release. Never replace or
+force-move an existing release tag.
 
 ## Integrity
 
