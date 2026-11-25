@@ -1304,7 +1304,10 @@ def run_setup(root: Path, current: dict, *, interactive: bool, maestro_setup, pl
     checkpoint('web_testing')
     ui.section(tr(lang, 'Native chat integration', 'Intégration des chats natifs'))
     from native_hooks import (installed as hooks_installed, install_native_hooks,
-                              codex_trust_status)
+                              codex_trust_status, refresh_central_provider_hooks)
+    # Repair version-pinned hooks on every init/repair, even when the project
+    # already has a registered hook configuration from an older engine.
+    refresh_central_provider_hooks(root)
     # GO already authorizes local configuration. Hook installation is not
     # hook *trust*: the provider must record that separately.
     if interactive and all(available.get(a,False) for a in required) and not hooks_installed(root):
