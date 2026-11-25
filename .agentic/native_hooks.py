@@ -195,49 +195,59 @@ def claude_write_guard_configured(root: Path) -> bool:
     return False
 
 
-def refresh_central_claude_hooks(root: Path) -> bool:
-    """Retarget previously configured Gaston Claude hooks after activation."""
+def refresh_central_provider_hooks(root: Path) -> dict:
+    """Retarget known Gaston hook commands to the active engine for both CLIs.
+
+    Only exact, previously installed Gaston script paths are changed. User
+    hooks and unknown scripts are preserved. No provider trust state is forged.
+    """
     if not central_mode():
-        return False
+        return {'claude':False,'codex':False}
     from central_update import home
     from importlib import metadata
     from platform_compat import parse_command
-    path = Path(root).resolve() / '.claude/settings.local.json'
-    if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
-        return False
-    try:
-        data = json.loads(path.read_text(encoding='utf-8'))
-        if data.get('disableAllHooks'):
-            return False
-        current = runtime_script('native_hooks.py').resolve()
-        base = Path(metadata.distribution('gaston-agentic-cli').locate_file('gaston_engine/native_hooks.py')).resolve()
-        versions = home() / 'versions'
-        changed = False
-        for event in ('SessionStart', 'SessionEnd', 'PreToolUse', 'Stop'):
-            for group in data.get('hooks', {}).get(event, []):
-                for hook in group.get('hooks', []):
-                    if hook.get('type') != 'command':
-                        continue
-                    args = parse_command(hook.get('command', ''))
-                    if len(args) != 3 or args[-1] != 'claude':
-                        continue
-                    old = Path(args[1])
-                    if not old.is_absolute() or old.resolve() != old or old == current:
-                        continue
-                    known = old == base
-                    if old.is_relative_to(versions):
-                        parts = old.relative_to(versions).parts
-                        known = len(parts) == 3 and bool(re.fullmatch(r'v\d+\.\d+\.\d+', parts[0])) and parts[1:] == ('gaston_engine', 'native_hooks.py')
-                    if not known or not old.is_file():
-                        continue
-                    hook['command'] = hook_def('claude', event, str(current))['command']
-                    changed = True
-        if changed:
-            atomic_json(path, data)
-        return changed
-    except (OSError, ValueError, TypeError, AttributeError, metadata.PackageNotFoundError):
-        return False
+    root=Path(root).resolve()
+    current=runtime_script('native_hooks.py').resolve()
+    base=Path(metadata.distribution('gaston-agentic-cli').locate_file('gaston_engine/native_hooks.py')).resolve()
+    versions=home()/'versions'
+    results={}
+    for provider,relative in (('claude','.claude/settings.local.json'),('codex','.codex/hooks.json')):
+        path=root/relative
+        if not path.is_file() or path.is_symlink() or path.parent.is_symlink():
+            results[provider]=False
+            continue
+        try:
+            data=json.loads(path.read_text(encoding='utf-8'))
+            if provider=='claude' and data.get('disableAllHooks'):
+                results[provider]=False
+                continue
+            changed=False
+            for event in ('SessionStart','SessionEnd','PreToolUse','Stop'):
+                for group in data.get('hooks',{}).get(event,[]):
+                    for hook in group.get('hooks',[]):
+                        if hook.get('type')!='command':continue
+                        args=parse_command(hook.get('command',''))
+                        if len(args)!=3 or args[-1]!=provider:continue
+                        old=Path(args[1])
+                        if not old.is_absolute() or old.resolve()!=old or old==current:continue
+                        known=old==base
+                        if old.is_relative_to(versions):
+                            parts=old.relative_to(versions).parts
+                            known=(len(parts)==3 and bool(re.fullmatch(r'v\d+\.\d+\.\d+',parts[0]))
+                                   and parts[1:]==('gaston_engine','native_hooks.py'))
+                        if not known or not old.is_file():continue
+                        hook['command']=hook_def(provider,event,str(current))['command']
+                        changed=True
+            if changed:atomic_json(path,data)
+            results[provider]=changed
+        except (OSError,ValueError,TypeError,AttributeError,metadata.PackageNotFoundError):
+            results[provider]=False
+    return results
 
+
+def refresh_central_claude_hooks(root: Path) -> bool:
+    """Backward-compatible Claude hook refresh entry point."""
+    return refresh_central_provider_hooks(root).get('claude',False)
 
 def receive(provider: str, event: dict) -> str:
     """Return a brief status for tests; hook CLI prints nothing to models."""
