@@ -60,9 +60,9 @@ class NativePlatformTests(unittest.TestCase):
 
     def test_windows_path_scope_comparison_is_case_insensitive_and_separator_safe(self):
         import orchestration as orch
-        self.assertTrue(orch.within('src\\Features\\Auth.tsx',['src/features']))
-        self.assertTrue(orch.within('src/FEATURES/Auth.tsx',['src/features']))
-        self.assertFalse(orch.within('src/features-old/Auth.tsx',['src/features']))
+        self.assertTrue(orch.within('src\\Features\\Auth.tsx',['src/features'],windows=True))
+        self.assertTrue(orch.within('src/FEATURES/Auth.tsx',['src/features'],windows=True))
+        self.assertFalse(orch.within('src/features-old/Auth.tsx',['src/features'],windows=True))
 
     def test_windows_cmd_shim_is_wrapped_without_interpolating_arguments(self):
         import base64
