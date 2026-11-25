@@ -163,7 +163,7 @@ _schema('record_project_roadmap','Save only explicitly developer-approved future
         {'milestones':{'type':'array','items':_milestone},'approved_decisions':{'type':'array','items':_decision},'next_milestone_id':_str,'developer_confirmed':{'type':'boolean'},'expected_sha256':{'type':['string','null']}},
         ['milestones','approved_decisions','next_milestone_id','developer_confirmed'])
 _schema('lead_context_budget','Read native Lead context and counters at a natural checkpoint. No new model call or conversation deletion.',{},[])
-_schema('checkpoint_lead_context','Persist factual decisions, next steps and exact task/plan IDs once at a natural checkpoint. Safe idle rollover is eligible only above context budget, without active work or newer developer messages. Do not record secrets.',{'summary':_str,'decisions':_strings,'next_steps':_strings,'task_ids':_strings,'plan_ids':_strings,'safe_to_rotate':{'type':'boolean'},'continue_work':{'type':'boolean','description':'True only if current developer authorized further work and no pause or required decision exists; checkpoint is not completion'}},['summary','decisions','next_steps','task_ids','plan_ids','safe_to_rotate'])
+_schema('checkpoint_lead_context','Persist factual decisions, next steps and exact task/plan IDs once at a natural checkpoint. Safe idle rollover is eligible only above context budget, without active work or newer developer messages. Do not record secrets.',{'summary':_str,'decisions':_strings,'next_steps':_strings,'task_ids':_strings,'plan_ids':_strings,'safe_to_rotate':{'type':'boolean'},'continue_work':{'type':'boolean','description':'Defaults to continuing current unfinished authorized plan; false only for explicit developer pause or concrete unresolved blocker, with stop_reason'},'stop_reason':{'type':'string','description':'Required if continue_work=false: exact developer pause or actual unresolved blocker, never context size or milestone completion alone'}},['summary','decisions','next_steps','task_ids','plan_ids','safe_to_rotate'])
 _schema('evolution_status','Show local improvement candidates, actual test outcomes and queued activation/rollback; current toolkit stays unchanged during active work.',{},[])
 _schema('queue_evolution','Queue one validated candidate or rollback of latest applied candidate for an idle ./dev startup. Ordinary helper fixes activate after validation; runtime/policy changes require actual developer confirmation at startup. No live writes, no Git changes.',{'candidate_id':_str,'rollback':{'type':'boolean'}},['candidate_id'])
 _schema('cancel_evolution','Cancel pending activation or rollback without changing installed toolkit.',{},[])
@@ -1965,6 +1965,18 @@ def handle(request, *, cancel_event=None, progress=None):
                     if incident:out.update(repair_incident=incident)
                 except (OSError,ValueError,RuntimeError,TypeError,KeyError):
                     pass  # Preserve the original failure if local telemetry cannot be written.
+        if LIVE_SERVER and name in ('plan_work','extend_work_plan','delegate_to_builder','resume_builder','request_builder_revision','start_lead_implementation','take_over_builder_task','lead_edit_files','complete_lead_implementation','record_lead_inspection','review_work_slice','prepare_checkpoint_acceptance','run_task_acceptance_check','finalize_delegated_task') and out.get('status') not in ('blocked','fail','cancelled') and _authorized_delegate():
+            try:
+                from session_store import Store
+                import efficiency_runtime
+                store=Store(ROOT);provider=store._configured_roles()[1];entry=store.get(provider,'reviewer')
+                pid=out.get('plan_id') or args.get('plan_id') or (out.get('work_plan') or {}).get('plan_id')
+                folder=_task_folder(out.get('task_id') or args.get('task_id'))
+                if not pid and folder:pid=orch.read_record(folder/'task.json').get('work_plan_id')
+                if pid and entry:
+                    with orch.mutation_guard(ROOT):efficiency_runtime.bind_plan(ROOT,provider,entry['id'],pid)
+            except (ValueError,OSError,TypeError,KeyError,RuntimeError):
+                pass  # Never conceal the actual operation result.
         out=compact_tool_response(name,out,args)
         if LIVE_SERVER and _authorized_delegate():
             try:

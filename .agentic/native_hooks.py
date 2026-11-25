@@ -367,15 +367,19 @@ def command_line():
                 import project_continuity as continuity
                 print(json.dumps({'hookSpecificOutput':{
                     'hookEventName':'SessionStart',
-                    'additionalContext':continuity.startup_context(ROOT)+'\n'+__import__('token_intelligence').checkpoint_context(ROOT,args.provider,event['session_id'])}}))
+                    'additionalContext':continuity.startup_context(ROOT)+'\n'+__import__('token_intelligence').checkpoint_context(ROOT,args.provider,event['session_id'])+'\n'+__import__('efficiency_runtime').bound_plan_context(ROOT,args.provider,event['session_id'])}}))
             if (args.provider=='claude' and event.get('hook_event_name')=='Stop' and result=='ordinary-chat'
-                    and not event.get('stop_hook_active') and registered_role(args.provider,event)=='reviewer'
+                    and registered_role(args.provider,event)=='reviewer'
                     and os.environ.get('GASTON_SESSION_LEASE')):
                 from session_store import Store
                 if not Store(ROOT).lead_caller(os.environ.get('GASTON_SESSION_LEASE'),args.provider,os.getpid()):return
                 from wait_guard import stop_reason
                 from efficiency_runtime import stop_advisory, continuation_reason
-                reason=stop_reason(ROOT,os.environ.get('GASTON_SESSION_LEASE')) or continuation_reason(ROOT,args.provider,event['session_id']) or stop_advisory(ROOT,args.provider,event['session_id'])
+                # Only the progress-deduplicated plan guard may re-enter a
+                # recursive Stop. One-shot wait/context nudges remain bounded.
+                recursive=event.get('stop_hook_active')
+                reason=(None if recursive else stop_reason(ROOT,os.environ.get('GASTON_SESSION_LEASE'))) or continuation_reason(ROOT,args.provider,event['session_id'])
+                if not reason and not recursive:reason=stop_advisory(ROOT,args.provider,event['session_id'])
                 if reason:print(json.dumps({'decision':'block','reason':reason}))
     except (OSError, ValueError, TypeError):
         return
