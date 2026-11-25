@@ -112,7 +112,7 @@ class NativePlatformTests(unittest.TestCase):
             ZombieProcess=ZombieProcess,Error=Error,Process=Process,
             process_iter=lambda fields:[Candidate({'pid':200,'create_time':201.0,'ppid':100})]
         )
-        with patch.object(session_store,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
+        with patch.object(session_store,'WINDOWS',True), patch.object(pc,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
             self.assertTrue(session_store.provider_child_active({
                 'pid':100,'start_ticks':str(200_000_000),'isolated_group':True
             }))
