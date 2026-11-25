@@ -79,7 +79,12 @@ def relative_path(root, name, *, windows=None):
     else:
         if re.match(r'^[A-Za-z]:[\\/]',value) or value.startswith('\\\\'):
             raise ValueError('A foreign Windows absolute path cannot be resolved on this host')
-        value=value.replace('\\','/')
+        supplied=Path(value)
+        if supplied.is_absolute():
+            try:value=supplied.resolve().relative_to(Path(root_text)).as_posix()
+            except ValueError as exc:raise ValueError('Path is outside workspace: '+name) from exc
+        else:
+            value=value.replace('\\','/')
     rel=PurePosixPath(value)
     if rel.is_absolute() or not rel.parts or '..' in rel.parts:
         raise ValueError('Private or unsafe path: '+name)
