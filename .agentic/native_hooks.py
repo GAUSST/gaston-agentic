@@ -141,8 +141,8 @@ def block_native_builder_tool(event):
         if not paths:raise ValueError('Unrecognized direct edit input')
         for name in paths:
             if not isinstance(name,str):raise ValueError('Missing edit path')
-            raw=Path(name)
-            if raw.is_absolute():name=raw.relative_to(ROOT.resolve()).as_posix()
+            from orchestration import relative_path
+            name=relative_path(ROOT,name)
             target=path_for(ROOT,name,scope=True)
             if not within(target.relative_to(ROOT.resolve()).as_posix(),scope):raise ValueError('Outside approved task scope: '+name)
     except (ValueError,OSError) as exc:
