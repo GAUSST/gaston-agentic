@@ -47,6 +47,11 @@ class NativePlatformTests(unittest.TestCase):
             self.assertIsNotNone(child.poll())
 
 
+    def test_posix_absolute_workspace_paths_remain_supported(self):
+        import orchestration as orch
+        self.assertEqual(orch.relative_path(ROOT,str(ROOT/'src'/'app.py')),'src/app.py')
+        with self.assertRaises(ValueError):orch.relative_path(ROOT,'/tmp/outside/app.py')
+
     def test_windows_relative_and_absolute_paths_normalize_without_losing_scope(self):
         import orchestration as orch
         self.assertEqual(orch.relative_path('C:\\work\\app','C:\\work\\app\\src\\features\\Auth.tsx',windows=True),
