@@ -54,21 +54,22 @@ def put(path, value):
         if os.path.exists(tmp):os.unlink(tmp)
 
 
-def relative_path(root, name):
+def relative_path(root, name, *, windows=None):
     """Canonical workspace-relative POSIX path from native provider output.
 
     Windows providers may report either C:\workspace\src\file.ts or
     src\file.ts. Accept both only when an absolute path belongs to this
     workspace; never reinterpret a foreign drive or UNC path as local.
     """
-    root=Path(root).resolve()
+    windows=os.name=='nt' if windows is None else windows
+    root_text=str(PureWindowsPath(str(root))) if windows else str(Path(root).resolve())
     if not isinstance(name,str) or not name or '\x00' in name:
         raise ValueError('Expected a non-empty workspace path')
     value=name
-    if os.name=='nt':
+    if windows:
         candidate=PureWindowsPath(value)
         if candidate.is_absolute():
-            try:relative=candidate.relative_to(PureWindowsPath(str(root)))
+            try:relative=candidate.relative_to(PureWindowsPath(root_text))
             except ValueError as exc:raise ValueError('Path is outside workspace: '+name) from exc
             value=PurePosixPath(*relative.parts).as_posix()
         else:
