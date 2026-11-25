@@ -71,6 +71,11 @@ class CentralUpdaterTests(unittest.TestCase):
         with self.assertRaises(central_update.CentralUpdateError):
             central_update.stage_verified_release(self.root,"v7.8.9",payload,manifest)
 
+    def test_check_only_flag_is_not_a_supported_update_mode(self):
+        with self.assertRaises(SystemExit) as raised:
+            central_update.command(["--check"])
+        self.assertEqual(raised.exception.code, 2)
+
     def test_rollback_to_base_keeps_global_tool_installation(self):
         manifest,payload=candidate()
         central_update.stage_verified_release(self.root,"v7.8.9",payload,manifest)
