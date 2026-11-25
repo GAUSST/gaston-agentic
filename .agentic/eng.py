@@ -1867,9 +1867,9 @@ def chat_command(agent: str, handoff_after: bool=True, visual: bool=False, role:
         prompt=f'Read AGENTS.md. You are the persistent {role} for this project. Do not change files. Return status=received, summary=ready, questions=[], next_steps=[].'
         codex_structured(prompt,ACK_SCHEMA,path,model,'read-only',role='review' if role=='reviewer' else 'plan')
     with SESSIONS.locked(agent,role):
-        if agent=='claude' and role=='reviewer' and central_mode():
-            from native_hooks import refresh_central_claude_hooks
-            refresh_central_claude_hooks(ROOT)
+        if central_mode():
+            from native_hooks import refresh_central_provider_hooks
+            refresh_central_provider_hooks(ROOT)
         existing=SESSIONS.get(agent,role)
         if agent=='codex':
             cmd=['codex',*(codex_lead_permission_args(interactive=True) if role=='reviewer' else codex_builder_permission_args('workspace-write',interactive=True)),
