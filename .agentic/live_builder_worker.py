@@ -20,7 +20,10 @@ import task_runtime
 
 def changed_paths(root, rd, previous, reported=(), *, after=None):
     """Keep the whole task scope across revisions; include observed Git edits."""
-    paths=set(previous.get('changed_files',[]) or []) | set(reported or [])
+    paths=set(previous.get('changed_files',[]) or [])
+    for value in (reported or []):
+        try:paths.add(orch.relative_path(root,value))
+        except (ValueError,TypeError):continue
     try:
         before=eng.load_json(rd/'preexisting-changes.json').get('files',{})
         if after is None:after=eng.workspace_git.existing_changes(root,eng.load_config().get('project'))
@@ -34,7 +37,11 @@ def changed_paths(root, rd, previous, reported=(), *, after=None):
         paths.update(observed)
     except (Exception,SystemExit):pass
     paths.update(orch.lead_paths(rd))
-    return sorted(p for p in paths if isinstance(p,str) and not Path(p).is_absolute() and '..' not in Path(p).parts)
+    normalized=set()
+    for value in paths:
+        try:normalized.add(orch.relative_path(root,value))
+        except (ValueError,TypeError):continue
+    return sorted(normalized)
 
 
 def interrupted(task_id, exc):
