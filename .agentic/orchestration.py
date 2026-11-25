@@ -123,10 +123,11 @@ def normalize_scope(root, paths):
     return sorted(set(out))
 
 
-def within(name, scopes):
+def within(name, scopes, *, windows=None):
+    windows=os.name=='nt' if windows is None else windows
     def key(value):
         normalized=str(value).replace('\\','/').rstrip('/')
-        return normalized.casefold() if os.name=='nt' else normalized
+        return normalized.casefold() if windows else normalized
     candidate=key(name)
     return bool(candidate) and any(candidate==key(scope) or candidate.startswith(key(scope)+'/') for scope in scopes)
 
