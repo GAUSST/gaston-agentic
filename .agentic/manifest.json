@@ -5,7 +5,7 @@
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
     ".agentic/api_checks.py": "134beeb4537f3a3dc6544d4650d9893338a6871d3c3d66780d086672f242adba",
-    ".agentic/backend_runner.py": "2ce70f9831853114ee78fb4e8cd48c2a2169b4254b998038cc1c764fd2fa9b37",
+    ".agentic/backend_runner.py": "644b066d19f143b1cdc833937ec90f06c9af34c426c11bf83a76e8662d1f81c0",
     ".agentic/builder_compile.py": "2cc6929692ec084a61c03cf67179fc65fd2fbc1964c1920f6b2131b3193bf318",
     ".agentic/cli_bootstrap.py": "1ae060936ba9eb2100eb6ed0cbacd2aade143037d07153dea2a1802e263b6eab",
     ".agentic/code_quality.py": "10141dc540f4c3b8eccad31688c4f0ecd9239e3ed18ac0c4f5cf2f19e4d3eb77",
