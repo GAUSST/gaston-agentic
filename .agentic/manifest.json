@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.7",
+  "release": "v1.6.8",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
@@ -135,5 +135,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.6.7"
+  "build": "1.6.8"
 }
