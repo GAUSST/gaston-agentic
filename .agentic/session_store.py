@@ -190,9 +190,18 @@ def provider_child_active(child):
         try:
             # Children of a terminated provider still retain their parent PID.
             # Fail closed if process enumeration is unavailable.
-            for candidate in psutil.process_iter(['pid','ppid','create_time']):
-                if candidate.info['ppid']==pid and candidate.info['create_time']*1000000>=int(child.get('start_ticks','0')):
-                    return True
+            started=int(child.get('start_ticks','0'))
+            for candidate in psutil.process_iter(['pid','create_time']):
+                try:
+                    if candidate.info['create_time']*1000000 < started:continue
+                    parent=candidate
+                    seen=set()
+                    while parent is not None and parent.pid not in seen:
+                        if parent.pid==pid:return True
+                        seen.add(parent.pid)
+                        parent=parent.parent()
+                except (psutil.NoSuchProcess,psutil.AccessDenied,psutil.ZombieProcess):
+                    continue
             return False
         except (psutil.Error, OSError, ValueError):
             return True
