@@ -143,10 +143,12 @@ class NativePlatformTests(unittest.TestCase):
                 path.write_text(json.dumps({'hooks':event_hooks},indent=2),encoding='utf-8')
                 configs[provider]=path
 
-            with patch.object(native_hooks,'central_mode',return_value=True), \\
-                 patch.object(native_hooks,'runtime_script',return_value=current), \\
-                 patch('central_update.home',return_value=global_home), \\
-                 patch('importlib.metadata.distribution',return_value=Distribution()):
+            with (
+                patch.object(native_hooks,'central_mode',return_value=True),
+                patch.object(native_hooks,'runtime_script',return_value=current),
+                patch('central_update.home',return_value=global_home),
+                patch('importlib.metadata.distribution',return_value=Distribution()),
+            ):
                 refreshed=native_hooks.refresh_central_provider_hooks(root)
 
             self.assertEqual(refreshed,{'claude':True,'codex':True})
