@@ -233,12 +233,17 @@ def refresh_central_provider_hooks(root: Path) -> dict:
                         if len(args)!=3 or args[-1]!=provider:continue
                         old=Path(args[1])
                         if not old.is_absolute() or old.resolve()!=old or old==current:continue
-                        known=old==base
+                        known_base=old==base
+                        known_version=False
                         if old.is_relative_to(versions):
                             parts=old.relative_to(versions).parts
-                            known=(len(parts)==3 and bool(re.fullmatch(r'v\d+\.\d+\.\d+',parts[0]))
-                                   and parts[1:]==('gaston_engine','native_hooks.py'))
-                        if not known or not old.is_file():continue
+                            known_version=(len(parts)==3 and bool(re.fullmatch(r'v\d+\.\d+\.\d+',parts[0]))
+                                           and parts[1:]==('gaston_engine','native_hooks.py'))
+                        # A previous immutable version may have been removed by
+                        # cleanup or an interrupted repair. Its exact managed
+                        # path is still recognizable and safe to retarget.
+                        if not (known_base or known_version):continue
+                        if known_base and not old.is_file():continue
                         hook['command']=hook_def(provider,event,str(current))['command']
                         changed=True
             if changed:atomic_json(path,data)
