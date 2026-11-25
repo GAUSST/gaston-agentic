@@ -174,6 +174,60 @@ def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3)
     proc.wait(timeout=5)
 
 
+
+def prepare_subprocess(argv, env=None):
+    """Resolve native executables and safely invoke Windows npm .cmd/.bat shims.
+
+    CreateProcess cannot reliably launch a PATHEXT-resolved command shim by
+    its bare name. PowerShell's call operator forwards an argument array to
+    cmd.exe without interpolating application arguments into shell source.
+    The encoded payload is removed before the provider inherits its environment.
+    """
+    args = [str(value) for value in argv]
+    if not args:
+        raise ValueError('Cannot launch an empty command')
+    if not WINDOWS:
+        return args, env, False
+
+    import base64
+    import json
+    import shutil
+
+    executable = shutil.which(args[0]) or args[0]
+    args[0] = executable
+    if Path(executable).suffix.lower() not in ('.cmd', '.bat'):
+        return args, env, False
+
+    powershell = shutil.which('powershell.exe') or shutil.which('powershell')
+    if not powershell:
+        system_root = os.environ.get('SystemRoot') or os.environ.get('WINDIR')
+        if system_root:
+            candidate = Path(system_root) / 'System32' / 'WindowsPowerShell' / 'v1.0' / 'powershell.exe'
+            if candidate.is_file():
+                powershell = str(candidate)
+    if not powershell:
+        raise RuntimeError('Windows PowerShell is required to launch the installed Codex/Claude .cmd CLI shim')
+
+    payload = base64.b64encode(json.dumps(args, ensure_ascii=False).encode('utf-8')).decode('ascii')
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$raw = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:GASTON_WINDOWS_BATCH_ARGS)); "
+        "Remove-Item Env:GASTON_WINDOWS_BATCH_ARGS; "
+        "$items = ConvertFrom-Json -InputObject $raw; "
+        "$exe = [string]$items[0]; "
+        "$cliArgs = @(); "
+        "if ($items.Count -gt 1) { $cliArgs = @($items | Select-Object -Skip 1 | ForEach-Object { [string]$_ }) }; "
+        "& $exe @cliArgs; "
+        "$exitCode = $LASTEXITCODE; "
+        "if ($null -eq $exitCode) { $exitCode = 0 }; "
+        "exit [int]$exitCode"
+    )
+    encoded_script = base64.b64encode(script.encode('utf-16le')).decode('ascii')
+    child_env = dict(os.environ if env is None else env)
+    child_env['GASTON_WINDOWS_BATCH_ARGS'] = payload
+    return [powershell, '-NoLogo', '-NoProfile', '-NonInteractive',
+            '-EncodedCommand', encoded_script], child_env, True
+
 def protect_workspace_local(root: Path) -> None:
     """Ensure sensitive runtime state cannot inherit broad Windows ACLs.
 
