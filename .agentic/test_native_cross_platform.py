@@ -99,7 +99,7 @@ class NativePlatformTests(unittest.TestCase):
         class Error(Exception): pass
 
         class Candidate:
-            def __init__(self, info): self.info=info
+            def __init__(self, info): self.info=info; self.pid=info['pid']
         class Process:
             def __init__(self,pid):
                 if pid==100: raise NoSuchProcess()
@@ -140,7 +140,7 @@ class NativePlatformTests(unittest.TestCase):
             ZombieProcess=ZombieProcess,Error=Error,Process=Process,
             process_iter=lambda fields:[Candidate()]
         )
-        with patch.object(session_store,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
+        with patch.object(session_store,'WINDOWS',True), patch.object(pc,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
             self.assertTrue(session_store.provider_child_active({
                 'pid':100,'start_ticks':str(200_000_000),'isolated_group':True
             }))
