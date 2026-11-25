@@ -128,6 +128,7 @@ class NativePlatformTests(unittest.TestCase):
         class Error(Exception): pass
 
         class Candidate:
+            pid=200
             info={'pid':200,'create_time':201.0,'ppid':300}
         class Process:
             def __init__(self,pid):
