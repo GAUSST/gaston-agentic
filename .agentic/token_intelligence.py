@@ -210,7 +210,7 @@ def last_user_fingerprint(provider, sid):
             payload=event.get('payload')
             if not isinstance(payload,dict):continue
             if event.get('type')=='event_msg' and payload.get('type')=='user_message':last=event
-        elif provider=='claude' and event.get('type')=='user' and not event.get('isSidechain'):
+        elif provider=='claude' and event.get('type')=='user' and not any(event.get(k) for k in ('isSidechain','isMeta','isCompactSummary','isSynthetic')):
             message=event.get('message')
             if not isinstance(message,dict):continue
             content=message.get('content')
@@ -234,14 +234,17 @@ def _rotation_blockers(root):
     return blockers
 
 
-def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task_ids,plan_ids,safe_to_rotate,continue_work=False):
+def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task_ids,plan_ids,safe_to_rotate,continue_work=None,stop_reason=None):
     """Durable bounded state, not a transcript or permission override."""
     from orchestration import put,plan_file
     root=Path(root); local=project_state(root)/'local'
     if not isinstance(summary,str) or not summary.strip() or len(summary)>8000:raise ValueError('Provide factual checkpoint summary, at most 8000 characters')
     for label,value in (('decisions',decisions),('next_steps',next_steps),('task_ids',task_ids),('plan_ids',plan_ids)):
         if not isinstance(value,list) or len(value)>30 or not all(isinstance(v,str) and 0<len(v)<=1200 for v in value):raise ValueError('Invalid '+label)
-    if type(continue_work) is not bool:raise ValueError('continue_work must be boolean')
+    if continue_work is not None and type(continue_work) is not bool:raise ValueError('continue_work must be boolean')
+    if stop_reason is not None and (not isinstance(stop_reason,str) or not stop_reason.strip() or len(stop_reason)>1200):raise ValueError('Provide a specific stop reason, at most 1200 characters')
+    if continue_work is False and not stop_reason:raise ValueError('Explicitly stopping requires the developer pause or concrete blocker; a context checkpoint is not a stop reason')
+    if stop_reason and continue_work is not False:raise ValueError('stop_reason requires continue_work=false')
     if type(safe_to_rotate) is not bool:raise ValueError('Specify whether all material user intent has been preserved and it is safe to rotate after closing')
     for tid in task_ids:
         if not re.fullmatch(r'[a-z0-9-]{8,120}',tid) or not (project_state(root)/'runs'/tid/'task.json').is_file():raise ValueError('Unknown task ID: '+tid)
@@ -250,8 +253,14 @@ def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task
     import project_continuity as continuity
     budget=lead_context(root,provider,sid);fingerprint=last_user_fingerprint(provider,sid);blockers=_rotation_blockers(root)
     roadmap=continuity.status(root)
-    eligible=bool(safe_to_rotate and roadmap['status']=='ready' and budget['status']=='rotate_at_safe_boundary' and fingerprint and not blockers)
-    record={'provider':provider,'session_id':sid,'recorded_at':time.time(),'summary':summary.strip(),'decisions':decisions,'next_steps':next_steps,'task_ids':task_ids,'plan_ids':plan_ids,'last_user_fingerprint':fingerprint,'rotation_eligible':eligible,'continue_work':continue_work,
+    # Inherit current-turn authorized plan IDs; a checkpoint need not enumerate
+    # them a second time. A prior user turn cannot grant authority.
+    from efficiency_runtime import bound_plans
+    if fingerprint:
+        plan_ids=list(dict.fromkeys([*bound_plans(root,provider,sid,fingerprint),*plan_ids]))
+    if continue_work is None:continue_work=bool(plan_ids or task_ids or next_steps)
+    eligible=bool(safe_to_rotate and roadmap['status']=='ready' and budget['status']=='rotate_at_safe_boundary' and fingerprint and not blockers and not continue_work)
+    record={'provider':provider,'session_id':sid,'recorded_at':time.time(),'summary':summary.strip(),'decisions':decisions,'next_steps':next_steps,'task_ids':task_ids,'plan_ids':plan_ids,'last_user_fingerprint':fingerprint,'rotation_eligible':eligible,'continue_work':continue_work,'stop_reason':stop_reason,
             'roadmap_sha256':roadmap.get('sha256') if roadmap['status']=='ready' else None,
             'next_milestone_id':roadmap.get('next_milestone_id') if roadmap['status']=='ready' else None,
             'roadmap_paths':roadmap.get('paths') if roadmap['status']=='ready' else None}
@@ -323,7 +332,7 @@ def checkpoint_context(root,provider,sid):
     fingerprint=last_user_fingerprint(provider,sid)
     if not fingerprint or fingerprint!=row.get('last_user_fingerprint'):
         return ''
-    payload={key:row.get(key) for key in ('summary','decisions','next_steps','task_ids','plan_ids')}
+    payload={key:row.get(key) for key in ('summary','decisions','next_steps','task_ids','plan_ids','continue_work','stop_reason')}
     return ('Durable checkpoint (reconcile current state and developer intent; not new authority). '
-            'If authorized work remains and no genuine blocker/user pause exists, continue now. '
+            + ('Respect the recorded pause/blocker; do not resume without resolving it or a newer developer instruction. ' if row.get('continue_work') is False and row.get('stop_reason') else 'If authorized work remains and no genuine blocker/user pause exists, continue now. ')
             +json.dumps(payload,ensure_ascii=False))[:12000]
