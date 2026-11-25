@@ -87,4 +87,62 @@ class NativePlatformTests(unittest.TestCase):
             pc.stop_owned(child,isolated_group=True,grace_seconds=.1)
             self.assertIsNotNone(child.poll())
 
+
+    def test_windows_orphaned_provider_child_is_detected_from_retained_parent_pid(self):
+        import sys
+        import types
+        import session_store
+
+        class NoSuchProcess(Exception): pass
+        class AccessDenied(Exception): pass
+        class ZombieProcess(Exception): pass
+        class Error(Exception): pass
+
+        class Candidate:
+            def __init__(self, info): self.info=info
+        class Process:
+            def __init__(self,pid):
+                if pid==100: raise NoSuchProcess()
+                self.pid=pid
+            def create_time(self): return 200.0
+            def ppid(self): return 1
+
+        fake=types.SimpleNamespace(
+            NoSuchProcess=NoSuchProcess,AccessDenied=AccessDenied,
+            ZombieProcess=ZombieProcess,Error=Error,Process=Process,
+            process_iter=lambda fields:[Candidate({'pid':200,'create_time':201.0,'ppid':100})]
+        )
+        with patch.object(session_store,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
+            self.assertTrue(session_store.provider_child_active({
+                'pid':100,'start_ticks':str(200_000_000),'isolated_group':True
+            }))
+
+    def test_windows_orphan_detection_fails_closed_when_ancestry_is_inaccessible(self):
+        import sys
+        import types
+        import session_store
+
+        class NoSuchProcess(Exception): pass
+        class AccessDenied(Exception): pass
+        class ZombieProcess(Exception): pass
+        class Error(Exception): pass
+
+        class Candidate:
+            info={'pid':200,'create_time':201.0,'ppid':100}
+        class Process:
+            def __init__(self,pid):
+                if pid==100: raise NoSuchProcess()
+                self.pid=pid
+            def create_time(self): return 200.0
+            def ppid(self): raise AccessDenied()
+        fake=types.SimpleNamespace(
+            NoSuchProcess=NoSuchProcess,AccessDenied=AccessDenied,
+            ZombieProcess=ZombieProcess,Error=Error,Process=Process,
+            process_iter=lambda fields:[Candidate()]
+        )
+        with patch.object(session_store,'WINDOWS',True), patch.dict(sys.modules,{'psutil':fake}):
+            self.assertTrue(session_store.provider_child_active({
+                'pid':100,'start_ticks':str(200_000_000),'isolated_group':True
+            }))
+
 if __name__=='__main__':unittest.main()
