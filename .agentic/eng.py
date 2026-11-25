@@ -326,9 +326,10 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
     output.parent.mkdir(parents=True, exist_ok=True)
     print('  Executing:', argv[0], argv[1] if len(argv) > 1 else '', flush=True)
     started = time.monotonic()
-    from platform_compat import popen_kwargs
+    from platform_compat import popen_kwargs, prepare_subprocess
     isolated_group = True
     try:
+        argv, env, _ = prepare_subprocess(argv, env)
         p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                              text=True, bufsize=1, env=env, **popen_kwargs())
@@ -1830,6 +1831,9 @@ def claude_session_display_name(role: str, session_id: str, project: Path | None
 
 def run_interactive_provider(cmd, **kwargs):
     """Track the native child separately from its wrapper for crash recovery."""
+    from platform_compat import prepare_subprocess
+    cmd,child_env,_=prepare_subprocess(cmd,kwargs.pop('env',None))
+    if child_env is not None:kwargs['env']=child_env
     with subprocess.Popen(cmd, **kwargs) as child:
         SESSIONS.record_child(child.pid)
         return child.wait()
