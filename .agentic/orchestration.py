@@ -8,7 +8,8 @@ from project_layout import project_state, central_mode
 import hashlib
 import json
 import os
-from pathlib import Path
+import ntpath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import secrets
 import tempfile
@@ -54,17 +55,108 @@ def put(path, value):
         if os.path.exists(tmp):os.unlink(tmp)
 
 
+
+def _windows_long_path(value):
+    """Expand 8.3 aliases for existing Windows ancestors without requiring the leaf."""
+    raw=ntpath.abspath(str(value))
+    missing=[]
+    probe=raw
+    while not os.path.exists(probe):
+        parent,leaf=ntpath.split(probe)
+        if not parent or parent==probe:
+            break
+        missing.insert(0,leaf)
+        probe=parent
+    if os.path.exists(probe):
+        try:
+            import ctypes
+            kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+            get_long=kernel.GetLongPathNameW
+            get_long.argtypes=[ctypes.c_wchar_p,ctypes.c_wchar_p,ctypes.c_uint32]
+            get_long.restype=ctypes.c_uint32
+            size=get_long(probe,None,0)
+            if size:
+                buffer=ctypes.create_unicode_buffer(size+1)
+                if get_long(probe,buffer,len(buffer)):
+                    probe=buffer.value
+        except (AttributeError,OSError,ValueError):
+            pass
+    return ntpath.normpath(ntpath.join(probe,*missing))
+
+
+def relative_path(root, name):
+    """Normalize native provider paths to safe workspace-relative POSIX paths.
+
+    Accept relative paths from either provider and absolute paths only when
+    they resolve inside this workspace. Resolve macOS /var aliases and Windows
+    8.3 aliases before containment checks. The result is platform-neutral.
+    """
+    if not isinstance(name,str) or not name or '\x00' in name:
+        raise ValueError('Expected a non-empty workspace path')
+    root_path=Path(root).resolve()
+    if os.name=='nt':
+        supplied=PureWindowsPath(name)
+        if '..' in supplied.parts:
+            raise ValueError('Parent traversal is not a workspace path: '+name)
+        root_abs=_windows_long_path(root_path)
+        if supplied.is_absolute():
+            candidate=_windows_long_path(supplied)
+            try:
+                common=ntpath.commonpath((root_abs,candidate))
+            except ValueError as exc:
+                raise ValueError('Path is outside workspace: '+name) from exc
+            if ntpath.normcase(common)!=ntpath.normcase(root_abs):
+                raise ValueError('Path is outside workspace: '+name)
+            relative=ntpath.relpath(candidate,root_abs)
+            value=PureWindowsPath(relative).as_posix()
+        else:
+            if supplied.drive or supplied.root:
+                raise ValueError('Expected a workspace-relative path: '+name)
+            value=supplied.as_posix()
+    else:
+        if re.match(r'^[A-Za-z]:[\\/]',name) or name.startswith('\\\\'):
+            raise ValueError('A Windows absolute path cannot be resolved on this host: '+name)
+        supplied=Path(name.replace('\\','/'))
+        if '..' in supplied.parts:
+            raise ValueError('Parent traversal is not a workspace path: '+name)
+        if supplied.is_absolute():
+            root_abs=os.path.realpath(os.fspath(root_path))
+            candidate=os.path.realpath(os.fspath(supplied))
+            try:
+                relative=os.path.relpath(candidate,root_abs)
+            except ValueError as exc:
+                raise ValueError('Path is outside workspace: '+name) from exc
+            if relative==os.curdir:
+                value='.'
+            elif relative==os.pardir or relative.startswith(os.pardir+os.sep):
+                raise ValueError('Path is outside workspace: '+name)
+            else:
+                value=Path(relative).as_posix()
+        else:
+            value=supplied.as_posix()
+    rel=PurePosixPath(value)
+    if rel.is_absolute() or not rel.parts or '..' in rel.parts:
+        raise ValueError('Private or unsafe path: '+name)
+    return rel.as_posix()
+
 def path_for(root, name, *, scope=False):
     root=Path(root).resolve()
-    if not isinstance(name,str) or not name or '\x00' in name or '\\' in name:raise ValueError('Expected workspace-relative path')
-    rel=Path(name)
-    if rel.is_absolute() or not rel.parts or '..' in rel.parts or any(x in PRIVATE or x.startswith('.env') for x in rel.parts):raise ValueError('Private or unsafe path: '+name)
-    if (len(rel.parts)==1 and rel.name in ROOT_PROTECTED) or rel.suffix.lower() in KEY_EXT:raise ValueError('Protected toolkit or key path: '+name)
-    if re.search(r'(^|[-_.])(secret[s]?|credentials?|private[-_]?key)([-_.]|$)',rel.name,re.I) and rel.suffix.lower() not in {'.java','.kt','.py','.ts','.js','.go','.rs','.md','.sh'}:raise ValueError('Potential secret path: '+name)
-    target=root/rel
-    if target.resolve()!=target or any((root/p).is_symlink() for p in (*rel.parents,rel)):raise ValueError('Linked path: '+name)
-    if target.exists() and not target.is_dir() and (not target.is_file() or target.stat().st_nlink!=1):raise ValueError('Not a regular single-link path: '+name)
-    if not scope and target.exists() and target.is_dir():raise ValueError('Expected a file path: '+name)
+    relative=relative_path(root,name)
+    rel=PurePosixPath(relative)
+    def folded(value):return value.casefold() if os.name=='nt' else value
+    if any(folded(x) in {folded(item) for item in PRIVATE} or folded(x).startswith('.env') for x in rel.parts):
+        raise ValueError('Private or unsafe path: '+name)
+    if (len(rel.parts)==1 and folded(rel.name) in {folded(x) for x in ROOT_PROTECTED}) or rel.suffix.lower() in KEY_EXT:
+        raise ValueError('Protected toolkit or key path: '+name)
+    if re.search(r'(^|[-_.])(secret[s]?|credentials?|private[-_]?key)([-_.]|$)',rel.name,re.I) and rel.suffix.lower() not in {'.java','.kt','.py','.ts','.js','.go','.rs','.md','.sh'}:
+        raise ValueError('Potential secret path: '+name)
+    target=root.joinpath(*rel.parts)
+    if target.resolve()!=target or any((root/Path(*p.parts)).is_symlink() for p in (PurePosixPath(*rel.parts[:i]) for i in range(1,len(rel.parts)+1))):
+        raise ValueError('Linked path: '+name)
+    if target.exists() and not target.is_dir() and (not target.is_file() or target.stat().st_nlink!=1):
+        raise ValueError('Not a regular single-link path: '+name)
+    if not scope and target.exists() and target.is_dir():
+        raise ValueError('Expected a file path: '+name)
     return target
 
 
@@ -81,7 +173,11 @@ def normalize_scope(root, paths):
 
 
 def within(name, scopes):
-    return any(name==s or name.startswith(s.rstrip('/')+'/') for s in scopes)
+    def key(value):
+        normalized=str(value).replace('\\','/').rstrip('/')
+        return normalized.casefold() if os.name=='nt' else normalized
+    candidate=key(name)
+    return bool(candidate) and any(candidate==key(scope) or candidate.startswith(key(scope)+'/') for scope in scopes)
 
 
 def overlaps(a,b):
