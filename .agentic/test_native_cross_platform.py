@@ -65,6 +65,22 @@ class NativePlatformTests(unittest.TestCase):
             with runtime_recovery.feedback_worker_guard(root) as after:
                 self.assertTrue(after)
 
+    def test_windows_cmd_shim_uses_argument_array(self):
+        import base64
+        import json
+        with patch.object(pc,'WINDOWS',True), patch('shutil.which',side_effect=lambda name: {
+            r'C:\\Program Files\\nodejs\\codex.cmd':r'C:\\Program Files\\nodejs\\codex.cmd',
+            'powershell.exe':r'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe'
+        }.get(name)):
+            args=[r'C:\\Program Files\\nodejs\\codex.cmd','exec','--model','model with spaces',r'C:\\work\\file.ts']
+            command,env,wrapped=pc.prepare_subprocess(args,{'PATH':r'C:\\Windows'})
+        self.assertTrue(wrapped)
+        self.assertEqual(json.loads(base64.b64decode(env['GASTON_WINDOWS_BATCH_ARGS']).decode()),args)
+        script=base64.b64decode(command[-1]).decode('utf-16le')
+        self.assertIn('& $exe @cliArgs',script)
+        self.assertNotIn('model with spaces',script)
+        self.assertNotIn('GASTON_WINDOWS_BATCH_ARGS', {k for k in env if k != 'GASTON_WINDOWS_BATCH_ARGS'})
+
     def test_subprocess_lifecycle(self):
         with subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],
                               **pc.popen_kwargs()) as child:
