@@ -188,13 +188,53 @@ def provider_child_active(child):
         pid=child.get('pid')
         if type(pid) is not int:return True
         try:
-            # Children of a terminated provider still retain their parent PID.
-            # Fail closed if process enumeration is unavailable.
-            for candidate in psutil.process_iter(['pid','ppid','create_time']):
-                if candidate.info['ppid']==pid and candidate.info['create_time']*1000000>=int(child.get('start_ticks','0')):
+            started=int(child.get('start_ticks','0'))
+            if started <= 0:
+                return True  # Without a launch identity, ancestry is unverifiable.
+
+            # If the recorded PID has been reused, its current ancestry cannot
+            # safely identify the old wrapper. Keep the lease blocked.
+            try:
+                current=psutil.Process(pid)
+                if abs(current.create_time()*1000000-started) > 10000:
+                    return True
+            except psutil.NoSuchProcess:
+                pass
+            except (psutil.AccessDenied,psutil.ZombieProcess):
+                return True
+
+            # Windows retains a child's parent PID after the wrapper exits.
+            # Check that recorded PID before resolving parent() / Process(),
+            # which returns None or NoSuchProcess for an exited parent.
+            for candidate in psutil.process_iter(['pid','create_time','ppid']):
+                try:
+                    info=candidate.info
+                    created=info.get('create_time')
+                    if not isinstance(created,(int,float)):
+                        return True
+                    if int(created*1000000) < started:
+                        continue
+                    parent_pid=info.get('ppid')
+                    seen={candidate.pid}
+                    while type(parent_pid) is int and parent_pid > 0 and parent_pid not in seen:
+                        if parent_pid == pid:
+                            return True
+                        seen.add(parent_pid)
+                        try:
+                            parent=psutil.Process(parent_pid)
+                            if int(parent.create_time()*1000000) < started:
+                                break
+                            parent_pid=parent.ppid()
+                        except psutil.NoSuchProcess:
+                            break
+                        except (psutil.AccessDenied,psutil.ZombieProcess):
+                            return True
+                except (psutil.NoSuchProcess,psutil.ZombieProcess):
+                    continue
+                except (psutil.AccessDenied,OSError):
                     return True
             return False
-        except (psutil.Error, OSError, ValueError):
+        except (psutil.Error,OSError,ValueError,TypeError):
             return True
     pid=child.get('pid')
     if type(pid) is not int or pid <= 0:

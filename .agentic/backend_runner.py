@@ -247,8 +247,10 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
         if test_filter:args += ['--tests',test_filter]
     timeout = max(1,min(int(timeout),1200))
     started=time.monotonic()
+    from platform_compat import prepare_subprocess
     try:
-        p=subprocess.run(args,cwd=directory,env=env,text=True,stdout=subprocess.PIPE,
+        command,run_env,_=prepare_subprocess(args,env)
+        p=subprocess.run(command,cwd=directory,env=run_env,text=True,stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE,timeout=timeout,check=False)
         stdout=p.stdout[-12000:];stderr=p.stderr[-8000:];code=p.returncode
     except subprocess.TimeoutExpired as exc:
@@ -266,7 +268,8 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
             env['JAVA_HOME']=alternate['home']
             env['PATH']=str(Path(alternate['home'])/'bin')+os.pathsep+os.environ.get('PATH','')
             try:
-                p=subprocess.run(args,cwd=directory,env=env,text=True,stdout=subprocess.PIPE,
+                command,run_env,_=prepare_subprocess(args,env)
+                p=subprocess.run(command,cwd=directory,env=run_env,text=True,stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE,timeout=timeout,check=False)
                 stdout=p.stdout[-12000:];stderr=p.stderr[-8000:];code=p.returncode
                 selected=alternate

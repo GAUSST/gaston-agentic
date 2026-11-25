@@ -94,31 +94,25 @@ def _legacy_feedback_worker_visible(root):
 
 @contextmanager
 def feedback_worker_guard(root):
-    """Kernel-owned lease releases automatically on crash; migrate only empty legacy locks.
+    """Portable kernel lease; the OS releases it automatically on crash.
 
-    No unlink of the flock file: replacing its inode would allow two workers.
-    Use the same guard from the hook worker, activation, and uninstall checks.
+    Use the same guard from the hook worker, activation and uninstall checks.
     """
-    import fcntl
-    root = Path(root).resolve()
-    local = project_state(root)/'local/native-hooks'
-    local.mkdir(parents=True, exist_ok=True)
-    fd = os.open(local/'feedback-worker.lock', os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW, 0o600)
+    from platform_compat import file_lock
+    root=Path(root).resolve()
+    local=project_state(root)/'local/native-hooks'
+    local.mkdir(parents=True,exist_ok=True)
+    old=local/'worker-lock'
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
-        except BlockingIOError:
-            yield False
-            return
-        old = local/'worker-lock'
-        if old.exists() or old.is_symlink():
-            if old.is_symlink() or not old.is_dir() or any(old.iterdir()) or _legacy_feedback_worker_visible(root):
-                yield False
-                return
-            old.rmdir()
-        yield True
-    finally:
-        os.close(fd)
+        with file_lock(local/'feedback-worker.lock',nonblocking=True):
+            if old.exists() or old.is_symlink():
+                if old.is_symlink() or not old.is_dir() or any(old.iterdir()) or _legacy_feedback_worker_visible(root):
+                    yield False
+                    return
+                old.rmdir()
+            yield True
+    except BlockingIOError:
+        yield False
 
 
 def feedback_worker_busy(root, *, settle=False):
