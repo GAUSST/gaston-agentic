@@ -187,7 +187,9 @@ def setup_preview(root: Path, current: dict, lang: str, *, interactive: bool) ->
 
 def probe(argv, *, cwd=None, timeout=12):
     try:
-        return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False)
+        from platform_compat import prepare_subprocess
+        command,env,_=prepare_subprocess(argv)
+        return subprocess.run(command, cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
     except (OSError, subprocess.TimeoutExpired):
         return None
 
@@ -266,8 +268,11 @@ def visible_run(argv, *, label, timeout, cwd=None, capture_output=False,
             pass
 
     try:
-        # The process owns a separate group so a timed-out bash installer
-        # cannot leave a curl/download subprocess running in the background.
+        from platform_compat import prepare_subprocess
+        argv,child_env,_=prepare_subprocess(argv,kwargs.pop('env',None))
+        if child_env is not None:kwargs['env']=child_env
+        # The process owns a separate group so a timed-out installer
+        # cannot leave a download subprocess running in the background.
         use_stream = inactivity_timeout is not None and not capture_output
         proc = subprocess.Popen(
             argv, cwd=cwd,
@@ -891,7 +896,9 @@ def open_codex_hook_review(root: Path) -> int:
             break
     # Native Codex must obtain consent. Gaston only observes the recorded
     # decision; it never writes to ~/.codex/config.toml or adds trust hashes.
-    process = subprocess.Popen(command, cwd=root)
+    from platform_compat import prepare_subprocess
+    command,child_env,_=prepare_subprocess(command)
+    process = subprocess.Popen(command, cwd=root, env=child_env)
     try:
         while process.poll() is None:
             state = codex_trust_status(root)
