@@ -46,6 +46,12 @@ jobs:
         run: python -m unittest discover -s .agentic -p 'test_native_cross_platform.py' -v
         env:
           PYTHONPATH: .agentic
+      - name: Full regression suite (Windows and macOS)
+        if: runner.os != 'Linux'
+        timeout-minutes: 25
+        run: python -m unittest discover -s .agentic -p 'test_*.py' -q
+        env:
+          PYTHONPATH: .agentic
       - name: Engineering quality contract regression
         run: python -m unittest discover -s .agentic -p 'test_engineering_quality_contract.py' -v
         env:
