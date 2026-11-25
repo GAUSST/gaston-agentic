@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.6",
+  "release": "v1.6.7",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
@@ -99,7 +99,7 @@
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
     "gaston_cli.py": "8db30efec391720c5d402b65411272469ed1c39ef7dba9f5db7f94191e03e7e8",
-    "pyproject.toml": "0079415746faa6c03c699ba2dd2b34f7052a4dee9a16980f9dc8ea4b4e5a0231",
+    "pyproject.toml": "f0e5f9d08a6623f41de453b01382fac63e0f3d3deabfbc52fa555560a6fe7b7c",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
@@ -135,5 +135,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.6.6"
+  "build": "1.6.7"
 }
