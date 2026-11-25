@@ -40,6 +40,31 @@ class NativePlatformTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 with pc.file_lock(path):pass
 
+    def test_workspace_path_normalization_and_scope(self):
+        import orchestration as orch
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve()
+            (root/'src').mkdir()
+            self.assertEqual(orch.relative_path(root,str(root/'src'/'App.py')),'src/App.py')
+            self.assertEqual(orch.relative_path(root,'src\\App.py'),'src/App.py')
+            self.assertTrue(orch.within('src\\App.py',['src']))
+            self.assertFalse(orch.within('src-old/App.py',['src']))
+            with self.assertRaises(ValueError):
+                orch.relative_path(root,str(root.parent/'outside.py'))
+            with self.assertRaises(ValueError):
+                orch.relative_path(root,'../outside.py')
+
+    def test_feedback_worker_guard_uses_shared_cross_platform_lock(self):
+        import runtime_recovery
+        with tempfile.TemporaryDirectory() as td:
+            root=Path(td).resolve()
+            with runtime_recovery.feedback_worker_guard(root) as first:
+                self.assertTrue(first)
+                with runtime_recovery.feedback_worker_guard(root) as second:
+                    self.assertFalse(second)
+            with runtime_recovery.feedback_worker_guard(root) as after:
+                self.assertTrue(after)
+
     def test_subprocess_lifecycle(self):
         with subprocess.Popen([sys.executable,'-c','import time;time.sleep(60)'],
                               **pc.popen_kwargs()) as child:
