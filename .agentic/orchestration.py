@@ -8,7 +8,7 @@ from project_layout import project_state, central_mode
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 import re
 import secrets
 import tempfile
@@ -54,19 +54,61 @@ def put(path, value):
         if os.path.exists(tmp):os.unlink(tmp)
 
 
+def relative_path(root, name):
+    """Canonical workspace-relative POSIX path from native provider output.
+
+    Windows providers may report either C:\workspace\src\file.ts or
+    src\file.ts. Accept both only when an absolute path belongs to this
+    workspace; never reinterpret a foreign drive or UNC path as local.
+    """
+    root=Path(root).resolve()
+    if not isinstance(name,str) or not name or '\x00' in name:
+        raise ValueError('Expected a non-empty workspace path')
+    value=name
+    if os.name=='nt':
+        candidate=PureWindowsPath(value)
+        if candidate.is_absolute():
+            try:relative=candidate.relative_to(PureWindowsPath(str(root)))
+            except ValueError as exc:raise ValueError('Path is outside workspace: '+name) from exc
+            value=PurePosixPath(*relative.parts).as_posix()
+        else:
+            if candidate.drive or candidate.root:
+                raise ValueError('Expected a workspace-relative path: '+name)
+            value=value.replace('\\','/')
+    else:
+        if re.match(r'^[A-Za-z]:[\\/]',value) or value.startswith('\\\\'):
+            raise ValueError('A foreign Windows absolute path cannot be resolved on this host')
+        value=value.replace('\\','/')
+    rel=PurePosixPath(value)
+    if rel.is_absolute() or not rel.parts or '..' in rel.parts:
+        raise ValueError('Private or unsafe path: '+name)
+    return rel.as_posix()
+
+
 def path_for(root, name, *, scope=False):
     root=Path(root).resolve()
-    if not isinstance(name,str) or not name or '\x00' in name or '\\' in name:raise ValueError('Expected workspace-relative path')
-    rel=Path(name)
-    if rel.is_absolute() or not rel.parts or '..' in rel.parts or any(x in PRIVATE or x.startswith('.env') for x in rel.parts):raise ValueError('Private or unsafe path: '+name)
-    if (len(rel.parts)==1 and rel.name in ROOT_PROTECTED) or rel.suffix.lower() in KEY_EXT:raise ValueError('Protected toolkit or key path: '+name)
-    if re.search(r'(^|[-_.])(secret[s]?|credentials?|private[-_]?key)([-_.]|$)',rel.name,re.I) and rel.suffix.lower() not in {'.java','.kt','.py','.ts','.js','.go','.rs','.md','.sh'}:raise ValueError('Potential secret path: '+name)
-    target=root/rel
-    if target.resolve()!=target or any((root/p).is_symlink() for p in (*rel.parents,rel)):raise ValueError('Linked path: '+name)
-    if target.exists() and not target.is_dir() and (not target.is_file() or target.stat().st_nlink!=1):raise ValueError('Not a regular single-link path: '+name)
-    if not scope and target.exists() and target.is_dir():raise ValueError('Expected a file path: '+name)
+    relative=relative_path(root,name)
+    rel=PurePosixPath(relative)
+    windows=os.name=='nt'
+    def folded(value):return value.casefold() if windows else value
+    if any(folded(x) in PRIVATE or folded(x).startswith('.env') for x in rel.parts):
+        raise ValueError('Private or unsafe path: '+name)
+    if (len(rel.parts)==1 and folded(rel.name) in {folded(x) for x in ROOT_PROTECTED}) or rel.suffix.lower() in KEY_EXT:
+        raise ValueError('Protected toolkit or key path: '+name)
+    if re.search(r'(^|[-_.])(secret[s]?|credentials?|private[-_]?key)([-_.]|$)',rel.name,re.I) and rel.suffix.lower() not in {'.java','.kt','.py','.ts','.js','.go','.rs','.md','.sh'}:
+        raise ValueError('Potential secret path: '+name)
+    target=root/Path(*rel.parts)
+    if target.resolve()!=target:
+        raise ValueError('Linked path: '+name)
+    cursor=root
+    for part in rel.parts:
+        cursor=cursor/part
+        if cursor.is_symlink():raise ValueError('Linked path: '+name)
+    if target.exists() and not target.is_dir() and (not target.is_file() or target.stat().st_nlink!=1):
+        raise ValueError('Not a regular single-link path: '+name)
+    if not scope and target.exists() and target.is_dir():
+        raise ValueError('Expected a file path: '+name)
     return target
-
 
 def normalize_scope(root, paths):
     if not isinstance(paths,list) or not paths:raise ValueError('Declare concrete, narrow workspace-relative file or module paths')
@@ -81,7 +123,11 @@ def normalize_scope(root, paths):
 
 
 def within(name, scopes):
-    return any(name==s or name.startswith(s.rstrip('/')+'/') for s in scopes)
+    def key(value):
+        normalized=str(value).replace('\\','/').rstrip('/')
+        return normalized.casefold() if os.name=='nt' else normalized
+    candidate=key(name)
+    return bool(candidate) and any(candidate==key(scope) or candidate.startswith(key(scope)+'/') for scope in scopes)
 
 
 def overlaps(a,b):
