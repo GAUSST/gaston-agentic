@@ -258,7 +258,16 @@ def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task
     from efficiency_runtime import bound_plans
     if fingerprint:
         plan_ids=list(dict.fromkeys([*bound_plans(root,provider,sid,fingerprint),*plan_ids]))
-    if continue_work is None:continue_work=bool(plan_ids or task_ids or next_steps)
+    if continue_work is None:
+        # An idle checkpoint can contain next steps for a future user turn and
+        # historical task references. Neither constitutes an active assignment.
+        # Preserve legacy safe_to_rotate semantics when there is no live plan
+        # or known unfinished task. Current-turn plans still default to continue.
+        from task_runtime import read_record, RUNNING
+        outstanding=RUNNING | {'awaiting_lead_review','lead_implementing','lead_takeover_required',
+                               'needs_lead_decision','blocked','checks_failed','changes_requested'}
+        unfinished=any(read_record(project_state(root)/'runs'/tid/'state.json').get('stage') in outstanding for tid in task_ids)
+        continue_work=bool(plan_ids or unfinished or (next_steps and not safe_to_rotate))
     eligible=bool(safe_to_rotate and roadmap['status']=='ready' and budget['status']=='rotate_at_safe_boundary' and fingerprint and not blockers and not continue_work)
     record={'provider':provider,'session_id':sid,'recorded_at':time.time(),'summary':summary.strip(),'decisions':decisions,'next_steps':next_steps,'task_ids':task_ids,'plan_ids':plan_ids,'last_user_fingerprint':fingerprint,'rotation_eligible':eligible,'continue_work':continue_work,'stop_reason':stop_reason,
             'roadmap_sha256':roadmap.get('sha256') if roadmap['status']=='ready' else None,

@@ -115,3 +115,22 @@ class ContextContinuationTests(unittest.TestCase):
             events.append({'type':'user','uuid':'pause','message':{'content':'Stop now'}})
             log.write_text('\n'.join(json.dumps(x) for x in events))
             self.assertNotEqual(module.last_user_fingerprint('claude','sid'),expected)
+
+
+    def test_idle_checkpoint_with_future_steps_retains_rotation_eligibility(self):
+        result=ti.record_lead_checkpoint(self.root,'claude','sid',
+            summary='Completed authorized work',decisions=[],next_steps=['Future phase after approval'],
+            task_ids=[],plan_ids=[],safe_to_rotate=True)
+        self.assertTrue(result['rotation_eligible'])
+        self.assertIsNone(ef.continuation_reason(self.root,'claude','sid'))
+
+    def test_unfinished_task_reference_defaults_to_continuation(self):
+        tid='unfinished-task-001'
+        folder=self.root/'.gaston/runs'/tid
+        orch.put(folder/'task.json',{'owner':'lead'})
+        orch.put(folder/'state.json',{'stage':'awaiting_lead_review'})
+        result=ti.record_lead_checkpoint(self.root,'claude','sid',
+            summary='Implementation awaiting review',decisions=[],next_steps=['Review changes'],
+            task_ids=[tid],plan_ids=[],safe_to_rotate=True)
+        self.assertFalse(result['rotation_eligible'])
+        self.assertIn('review '+tid,ef.continuation_reason(self.root,'claude','sid'))
