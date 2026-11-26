@@ -62,16 +62,27 @@ def migrate_legacy_credentials(root):
         raise ValueError('Refusing linked or invalid legacy development DB directory')
     if not (root/'.gaston/project.json').is_file():
         return False
+    if os.name=='nt':
+        from platform_compat import protect_private_path
+        protect_private_path(legacy)
+    elif legacy.stat().st_uid!=os.getuid() or legacy.stat().st_mode&0o077:
+        raise ValueError('Legacy development DB directory is not private; inspect before migration')
     source_fingerprint=_tree_fingerprint(legacy)
     folder=private_dir(root)
     folder.mkdir(mode=0o700,parents=True,exist_ok=True)
     if os.name!='nt':
         os.chmod(folder,0o700)
+    else:
+        from platform_compat import protect_private_path
+        protect_private_path(folder)
     source=legacy/'credentials.json'
     destination=folder/'credentials.json'
     if source.exists() or source.is_symlink():
         if source.is_symlink() or not source.is_file():
             raise ValueError('Refusing linked or invalid legacy development credentials')
+        if os.name=='nt':
+            from platform_compat import protect_private_path
+            protect_private_path(source)
         if os.name!='nt' and (source.stat().st_uid!=os.getuid() or source.stat().st_mode&0o077):
             raise ValueError('Legacy development credentials are not private; inspect before migration')
         if destination.is_symlink():
@@ -79,6 +90,11 @@ def migrate_legacy_credentials(root):
         if destination.exists():
             if not destination.is_file() or hashlib.sha256(source.read_bytes()).digest()!=hashlib.sha256(destination.read_bytes()).digest():
                 raise ValueError('Legacy and central development credentials conflict; both copies were preserved')
+            if os.name=='nt':
+                from platform_compat import protect_private_path
+                protect_private_path(destination)
+            else:
+                os.chmod(destination,0o600)
         else:
             shutil.copy2(source,destination)
             if os.name!='nt':os.chmod(destination,0o600)

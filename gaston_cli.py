@@ -235,7 +235,7 @@ def main():
                     return _central_init()
                 root, kind = find_project(start)
                 if arguments == ['migrate'] and kind in ('legacy', 'central'):
-                    if kind == 'legacy' or (root/'.agentic').exists() or (root/'.gaston-dev-db').exists():
+                    if kind == 'legacy' or (root/'.agentic').exists() or (root/'.gaston-dev-db').exists() or (root/'.gaston-dev-db').is_symlink():
                         return _central_migrate(root)
                 if kind == 'central' and arguments == ['uninstall']:
                     return _central_uninstall(root)
