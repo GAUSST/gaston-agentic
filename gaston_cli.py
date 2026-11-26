@@ -126,8 +126,10 @@ def _central_module(name: str, root: Path | None = None):
 
 
 def _global_update(args: list[str], root: Path | None = None) -> int:
-    trusted_root = root or Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
-    module = _central_module('central_update', trusted_root)
+    # Only a project explicitly identified by find_project is a trust boundary.
+    # The current directory is not a project root by default: dev update
+    # from / (or another directory outside a project) is a valid global update.
+    module = _central_module('central_update', root)
     return module.main(args, root=root)
 
 
