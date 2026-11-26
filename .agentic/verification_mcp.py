@@ -185,13 +185,19 @@ for _tool in TOOLS:
 
 def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
     try:
-        result = subprocess.run(argv, cwd=cwd or ROOT, env=env, stdout=subprocess.PIPE,
+        from platform_compat import prepare_subprocess, resolve_flutter
+        cwd = Path(cwd or ROOT)
+        argv = list(argv)
+        if argv and argv[0] == 'flutter':
+            argv[0] = resolve_flutter(cwd, workspace=ROOT)
+        argv, env, _ = prepare_subprocess(argv, env)
+        result = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, text=True, timeout=timeout, check=False)
         return {'exit_code':result.returncode, 'stdout':result.stdout[-output_limit:], 'stderr':result.stderr[-output_limit:]}
     except subprocess.TimeoutExpired as exc:
         return {'exit_code':None, 'reason':'timeout', 'timeout_seconds':timeout,
                 'stderr':str(exc)[-1000:]}
-    except OSError as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         return {'exit_code':None, 'reason':'execution_failed', 'stderr':str(exc)[-1000:]}
 
 
@@ -250,11 +256,11 @@ def playwright_folder():
 def status():
     import playwright_tools
     folder=playwright_folder()
+    from platform_compat import maestro_binary
     return response('ready', toolkit_release=TOOLKIT_RELEASE, toolkit_build=TOOLKIT_BUILD, manifest_sha256=MANIFEST_SHA256, server_path=SERVER_PATH, server_pid=os.getpid(), completion_wait_seconds=BUILDER_WAIT_SECONDS, playwright_test=bool(folder),
                     playwright_workspace=str(folder.relative_to(ROOT)) if folder else None,
                     chromium_installed=bool(folder and playwright_tools.chromium_installed(ROOT)),
-                    maestro_binary=shutil.which('maestro') or str(Path.home()/'.maestro/bin/maestro')
-                    if (shutil.which('maestro') or (Path.home()/'.maestro/bin/maestro').is_file()) else None,
+                    maestro_binary=maestro_binary(),
                     configured_avds=avd_names(), connected_emulators=connected_emulators())
 
 
@@ -637,8 +643,9 @@ def _run_maestro_tests_impl(relative_path='.maestro', *, expected_device=None, c
         return response('blocked', reason='Exactly one connected Android emulator is required; physical devices are not used',devices=devices)
     if expected_device is not None and devices != [expected_device]:
         return response('blocked', reason='Selected Android emulator changed', devices=devices)
-    maestro=shutil.which('maestro') or str(Path.home()/'.maestro/bin/maestro')
-    if not Path(maestro).is_file() and not shutil.which(maestro):
+    from platform_compat import maestro_binary
+    maestro=maestro_binary()
+    if not maestro:
         return response('blocked',reason='Maestro CLI not found')
     relative_path=str(relative_path or '.maestro')
     candidate=(ROOT/relative_path).resolve()
@@ -1429,7 +1436,7 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
         if project is None and len(paths)==1:project=paths[0]
         if project not in paths:result=response('blocked',reason='Select a discovered Flutter application')
         else:
-            evidence=execute(['flutter','test' if kind=='flutter_tests' else 'analyze'],cwd=ROOT/project,timeout=600)
+            evidence=execute(['flutter','test' if kind=='flutter_tests' else 'analyze'],cwd=ROOT/project,timeout=1200 if kind=='flutter_tests' else 600)
             result=response('pass' if evidence['exit_code']==0 else 'blocked' if evidence['exit_code'] is None else 'fail',project=project,evidence=evidence)
     else:
         result=run_project_mobile_tests(project, relative_path)
@@ -1456,9 +1463,10 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
 
 def _sync_lead_build(folder):
     prior=orch.read_record(folder/'build.json')
-    if prior and orch.lead_paths(folder) and not any(x['task_id']==folder.name for x in orch.active_builders(ROOT)):
+    if prior:
         merged=orch.merge_lead_paths(folder,prior)
-        if merged!=prior:orch.put(folder/'build.json',merged)
+        if merged!=prior and not any(x['task_id']==folder.name for x in orch.active_builders(ROOT)):
+            orch.put(folder/'build.json',merged)
     return orch.read_record(folder/'build.json')
 
 def acceptance_evidence_detail(task_id,check_id,include_logs=False):

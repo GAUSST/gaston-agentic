@@ -422,8 +422,14 @@ def apply_edits(root, folder, edits, purpose):
     return {'status':'pass','edited_files':updated,'note':'Local files changed by Lead; independent checks still required'}
 
 
+def canonical_change_paths(paths):
+    # Provider reports and old reconciliation records may mix native and POSIX
+    # separators. Keep the evidence, but count each relative file only once.
+    return sorted({value.replace('\\','/') for value in paths})
+
+
 def merge_lead_paths(folder,build):
-    return {**build,'changed_files':sorted(set(build.get('changed_files',[]))|lead_paths(folder)),'lead_changed_files':sorted(lead_paths(folder))}
+    return {**build,'changed_files':canonical_change_paths(set(build.get('changed_files',[]))|lead_paths(folder)),'lead_changed_files':canonical_change_paths(lead_paths(folder))}
 
 
 def correction_round(previous,state):
@@ -606,7 +612,7 @@ def reconcile_scope(root,tid,decisions):
             changed.discard(name)
     prior_status=build.get('scope_prior_status','blocked');questions=build.get('scope_prior_questions') or []
     put(folder/'scope-reconciliation.json',{'decisions':decisions,'observation':read_record(folder/'scope-observation.json'),'recorded_at':time.time()})
-    built={**build,'status':prior_status,'questions':questions,'changed_files':sorted(changed|lead_paths(folder)),'scope_review_required':[],'out_of_scope_reported':[]}
+    built={**build,'status':prior_status,'questions':questions,'changed_files':canonical_change_paths(changed|lead_paths(folder)),'scope_review_required':[],'out_of_scope_reported':[]}
     put(folder/'build.json',built)
     stage='awaiting_lead_review' if prior_status=='done' and not questions else 'needs_lead_decision'
     put(folder/'state.json',{**state,'stage':stage,'questions':questions,'clarification_only':False})

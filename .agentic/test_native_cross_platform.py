@@ -228,6 +228,71 @@ class NativePlatformTests(unittest.TestCase):
         self.assertIn('Schannel', result.stdout)
         self.assertIn('https', result.stdout.lower())
 
+    def test_flutter_fvm_pin_precedes_path_and_missing_pin_blocks(self):
+        import json
+        with tempfile.TemporaryDirectory(prefix='gaston fvm fixture ') as td:
+            root = Path(td).resolve()
+            app = root / 'workspace' / 'mobile'
+            app.mkdir(parents=True)
+            cache = root / 'fvm cache'
+            binary = 'flutter.bat' if os.name == 'nt' else 'flutter'
+            sdk = cache / 'versions' / '3.50.1' / 'bin' / binary
+            sdk.parent.mkdir(parents=True)
+            sdk.write_text('fixture', encoding='utf-8')
+            (app / '.fvmrc').write_text(json.dumps({'flutter': '3.50.1'}))
+            with patch.dict(os.environ, {'FVM_CACHE_PATH': str(cache)}), \
+                 patch('shutil.which', return_value='wrong-system-flutter') as fallback:
+                self.assertEqual(pc.resolve_flutter(app, workspace=root), str(sdk.resolve()))
+                fallback.assert_not_called()
+                sdk.unlink()
+                with self.assertRaisesRegex(FileNotFoundError, '3.50.1'):
+                    pc.resolve_flutter(app, workspace=root)
+                fallback.assert_not_called()
+                (app / '.fvmrc').unlink()
+                (app.parent / '.fvmrc').write_text(json.dumps({'flutter': '3.50.1'}))
+                with self.assertRaisesRegex(FileNotFoundError, '3.50.1'):
+                    pc.resolve_flutter(app, workspace=root)
+                (app.parent / '.fvmrc').unlink()
+                self.assertEqual(pc.resolve_flutter(app, workspace=root), 'wrong-system-flutter')
+
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows Flutter batch integration')
+    def test_windows_mcp_runs_fvm_flutter_batch_for_analyze_test_and_build(self):
+        import json
+        import verification_mcp as vm
+        with tempfile.TemporaryDirectory(prefix='gaston flutter windows ') as td:
+            root = Path(td).resolve()
+            app = root / 'app'
+            app.mkdir()
+            cache = root / 'fvm cache'
+            sdk = cache / 'versions' / '3.50.1' / 'bin' / 'flutter.bat'
+            sdk.parent.mkdir(parents=True)
+            sdk.write_text('@echo off\n'
+                           'echo SDK=3.50.1\n'
+                           'echo ARGS=%*\n'
+                           'exit /b 0\n', encoding='ascii')
+            (app / '.fvmrc').write_text(json.dumps({'flutter': '3.50.1'}))
+            with patch.object(vm, 'ROOT', root), \
+                 patch.dict(os.environ, {'FVM_CACHE_PATH': str(cache)}):
+                for args in (['analyze'], ['test'], ['build', 'apk', '--debug', '--no-pub']):
+                    result = vm.execute(['flutter', *args], cwd=app, timeout=30)
+                    self.assertEqual(result['exit_code'], 0, result)
+                    self.assertIn('SDK=3.50.1', result['stdout'])
+                    self.assertIn('ARGS=' + ' '.join(args), result['stdout'])
+                sdk.unlink()
+                result = vm.execute(['flutter', 'analyze'], cwd=app)
+                self.assertIsNone(result['exit_code'])
+                self.assertIn('3.50.1', result['stderr'])
+
+    def test_reconciled_change_paths_merge_native_and_posix_aliases(self):
+        import orchestration as orch
+        with tempfile.TemporaryDirectory() as td:
+            folder = Path(td)
+            orch.put(folder / 'lead-edits.json', {'files': {'lib/theme.dart': {}}})
+            built = orch.merge_lead_paths(folder, {'changed_files': [
+                r'lib\theme.dart', 'lib/theme.dart', r'lib\other.dart']})
+            self.assertEqual(built['changed_files'], ['lib/other.dart', 'lib/theme.dart'])
+            self.assertEqual(built['lead_changed_files'], ['lib/theme.dart'])
+
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')

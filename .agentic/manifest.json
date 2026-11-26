@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.7.0",
+  "release": "v1.7.1",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
@@ -13,7 +13,7 @@
     ".agentic/development_db.py": "2b01233cec3bb0ba4819ce6dae7fb4a8897dcf046f09b200296ee9da8b455cc7",
     ".agentic/documentation_review.py": "3bf8681cbdc9b66ea79efb1352e3e8103f6ccc5ac154ac41bc4aabb2f05699d2",
     ".agentic/efficiency_runtime.py": "4f57bf03c1951bbead799fae5809bf7a8ec7d9d5a0a36a1252351208a7496b11",
-    ".agentic/eng.py": "b87b56349e966bbbd985e3f347001eac55c69cdf991ae9a07bde0e0e47bc1a51",
+    ".agentic/eng.py": "0dda7d5416db482de5ef1b2b216386f4cd99759c6de274fb1e0c0678e1d033e9",
     ".agentic/evidence_efficiency.py": "1b17d96a3fabe1456b65c1ae2d726d679ddca0c84ec94aa0a55c2a0b74724166",
     ".agentic/evolution.py": "cf4dd07b1609ebe22619eea0b33f131e24f0d8b2b0c6c9f7ef61bdfcdc012b7a",
     ".agentic/hook_worker.py": "3bd46d027ceabc616f83ee749daa1d5ce95ee12c357301adcb6d3f0be5f75dce",
@@ -26,9 +26,9 @@
     ".agentic/managed_backend.py": "632b4710b95a2dcc8b14e30958515a327643228e8393c48375dc3e1fa3c0d13b",
     ".agentic/model_menu.py": "0cfc024c0752513b261afd8c90d9474f3e9b74f674b8e42e60891b4168e1e665",
     ".agentic/native_hooks.py": "2bb54e421b7aa80306abe55299c942f519c228ef72d803f5ad879d794ca050fd",
-    ".agentic/orchestration.py": "be0a4b5e4842cd65d1c7652b63aa833cfad479cf7d89cd24002f9bc7962a4521",
+    ".agentic/orchestration.py": "e3ab1c483b2dfc6a4c8f6e36ab1f2c03c62b540703e6b498d89753d82862406a",
     ".agentic/pipeline_worker.py": "81f55abdd01abde237c5d0f29bb20cb4e0ad2ac21ae14b89c1c64c91da1f8337",
-    ".agentic/platform_compat.py": "25ff0ad60e8dff8fdcdfdae88ac043e7264cae02e85af06752a705c413aa79e6",
+    ".agentic/platform_compat.py": "6ea657022f4482a3cf1bf39deaec23f83513cbe73fc06d188b5431e2a981c870",
     ".agentic/playwright_tools.py": "0618229fc68788682732efd157584e1ef463958ccd44dd1c18f50cf3e0f42c66",
     ".agentic/policies/fintech.md": "d8dcf41c9223e53c27a3a732e61eb1b47f09db91262b8b241ccf988e47eac388",
     ".agentic/project_continuity.py": "669a52118fea09a6ef8773a18c4f9f26cdf85da9cbd5ac2f697be134fc06d900",
@@ -53,7 +53,7 @@
     ".agentic/test_launcher.py": "b0c76887949816aef738ab325c253907e0adc0e1d6480e6ba03b43d40a64581e",
     ".agentic/test_lead_autonomy.py": "4396b322b7715883eedd5698451ee3ff25310b6a645791310185e7d81a70c700",
     ".agentic/test_lead_workspace.py": "8a253a70262a45425bb1676095c03408bc2f34a5b1f7ed37b7f85abd8565b624",
-    ".agentic/test_native_cross_platform.py": "7ea1f1fee729cf0b3ecd1b3b628df2aabbeb6b172a02e9c49fd983777a614f8e",
+    ".agentic/test_native_cross_platform.py": "ca4ab9298ed6e35cb9596f18210beb9e3d6f9666011487b7d344076aa100e44a",
     ".agentic/test_project_continuity.py": "6692932d431441ae181021244a8f34b2baaa5024468394b49146992ee8ffef30",
     ".agentic/test_release_integrity.py": "6c3d8f69fb3fb3f92dede0f92fe13256e6ed450d5589c7315b465a249ada1282",
     ".agentic/test_runtime_recovery.py": "85f2188a78b7b5ee119bb0a83e060ad297766dbe27355833df56475f16aef8bc",
@@ -80,7 +80,7 @@
     ".agentic/token_intelligence.py": "3b5720fa71e791c1bcbd99a32a85e5ca09686e03433300cc4fc0c0276cd6ca33",
     ".agentic/uninstall.py": "060c343c31af86feb5d452f71f8f67ad26ade28c4129eb4a186d4caafdd3c2cc",
     ".agentic/verification_brief.py": "7abe2a835e7fc64c478a3cef2bd67dde4e95fa10fdca4bf2650ff235aec42690",
-    ".agentic/verification_mcp.py": "e5be11050f4354647787dd38ed3b369e90eb45fc82e6a72af31e383729c4a767",
+    ".agentic/verification_mcp.py": "7f75bcd2cf93b9fcec772056e7ed7be33a49383e2e8c4f13e968c893df2301e2",
     ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
     ".agentic/workspace_checks.py": "6d6e4e8cd8cca962ae1fb9143167e294d7c989bc775f432d0104fc8edb983bf5",
     ".agentic/workspace_git.py": "002140e779f2ec6b9e2df251c7bea76b3321e2de73d69cde37b63a03f1dc13c5",
@@ -99,7 +99,7 @@
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
     "gaston_cli.py": "adff8c68b36394e9522b5626fbeb768ca23a2737654a4f97f1a6bbe0d5261ff3",
-    "pyproject.toml": "8540fb14d20ca0293843703fa64a218152da0685ffad47d337307da3a50951dc",
+    "pyproject.toml": "84c87132173c2d0caa7fe2b487cd756da3902cab103f9326e6e53e1d474960ec",
     ".agentic/updater.py": "b35732f6235c7163e62cd7dd50aef98c4a17abe0c84c5365295b8020025c9234",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
@@ -118,7 +118,7 @@
     ".agentic/test_central_update.py": "20ac3656702e56c5347c213fc5fcf2bcd323dd44025734ca622a78adb4249f2e",
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
     ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
-    ".agentic/mobile_acceptance.py": "210a443272527e7d72fa5a10cf7b61e4de3e547b134edb568a02ba49d9f155e4",
+    ".agentic/mobile_acceptance.py": "cfe914a1b10b7054245718758eb20b1a0ad5a9196beddac0492f3b7df47f094d",
     ".agentic/test_central_mobile_acceptance.py": "d04f9e64e514c37974475560442d675b07d32be73a395705953cdf295f5284c3",
     ".agentic/wait_guard.py": "dc26bebd423914ea2c45c54ff2124fc9e2ebd38a6c5c56d32818edae00021d5c",
     ".agentic/test_central_wait_guard.py": "152b60eb20c9a6cb10a4563a9a87f544e7df88a404c295754475864fdcdb194b",
@@ -132,5 +132,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.7.0"
+  "build": "1.7.1"
 }

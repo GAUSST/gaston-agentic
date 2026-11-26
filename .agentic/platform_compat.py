@@ -206,6 +206,83 @@ def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3)
 
 
 
+def resolve_flutter(cwd: Path, *, workspace: Path | None = None) -> str:
+    """Select an installed project-pinned Flutter SDK without installing anything.
+
+    FVM's current .fvmrc and legacy fvm_config.json are supported. Never use
+    PATH for a project with a declared but missing SDK. Restrict ancestor
+    discovery to the current Gaston workspace.
+    """
+    import json
+    import shutil
+    app = Path(cwd).resolve()
+    boundary = Path(workspace).resolve() if workspace is not None else app
+    if not app.is_relative_to(boundary):
+        raise ValueError('Flutter project escapes workspace')
+    binary = 'flutter.bat' if WINDOWS else 'flutter'
+    locations = [app, *(p for p in app.parents if p.is_relative_to(boundary))]
+    for location in locations:
+        config = location / '.fvmrc'
+        legacy = location / '.fvm/fvm_config.json'
+        pin = None
+        if config.is_file() or legacy.is_file():
+            source, key = (config, 'flutter') if config.is_file() else (legacy, 'flutterSdkVersion')
+            try:
+                data = json.loads(source.read_text(encoding='utf-8-sig'))
+                pin = data.get(key) if isinstance(data, dict) else None
+            except (OSError, ValueError) as exc:
+                raise ValueError('Invalid FVM configuration: ' + str(source)) from exc
+            if (not isinstance(pin, str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,127}', pin)
+                    or '..' in pin):
+                raise ValueError('Invalid or unsupported Flutter SDK pin in ' + str(source))
+        linked = location / '.fvm/flutter_sdk'
+        if (linked / 'bin' / binary).is_file():
+            actual = linked.resolve()
+            # A stale link must not override the configured version. FVM
+            # normally points at versions/<pin>; older SDKs also have version.
+            version = ''
+            try:
+                version = (actual / 'version').read_text(encoding='utf-8').strip()
+            except (OSError, UnicodeError):
+                pass
+            if not pin or actual.name == pin or version == pin:
+                return str(actual / 'bin' / binary)
+        if pin:
+            custom = os.environ.get('FVM_CACHE_PATH') or os.environ.get('FVM_HOME')
+            cache = Path(custom).expanduser() if custom else Path.home() / 'fvm'
+            if not cache.is_absolute():
+                raise ValueError('FVM cache must be an absolute path')
+            candidate = cache / 'versions' / pin / 'bin' / binary
+            if candidate.is_file():
+                return str(candidate.resolve())
+            raise FileNotFoundError('Project requires FVM Flutter ' + pin
+                                    + '; installed SDK not found at ' + str(candidate))
+        if linked.exists() or linked.is_symlink():
+            raise FileNotFoundError('Project FVM Flutter SDK link is unavailable: ' + str(linked))
+    custom = os.environ.get('FVM_CACHE_PATH') or os.environ.get('FVM_HOME')
+    cache = Path(custom).expanduser() if custom else Path.home() / 'fvm'
+    default = cache / 'default' / 'bin' / binary
+    if cache.is_absolute() and default.is_file():
+        return str(default.resolve())
+    found = shutil.which(binary)
+    if not found:
+        raise FileNotFoundError('Flutter SDK is unavailable on PATH')
+    return found
+
+
+def maestro_binary() -> str | None:
+    import shutil
+    names = ('maestro.bat', 'maestro.cmd', 'maestro.exe', 'maestro') if WINDOWS else ('maestro',)
+    for name in names:
+        found = shutil.which(name)
+        if found:
+            return found
+        local = Path.home() / '.maestro' / 'bin' / name
+        if local.is_file():
+            return str(local)
+    return None
+
+
 def prepare_subprocess(argv, env=None):
     """Resolve native executables and safely invoke Windows .cmd/.bat shims.
 
