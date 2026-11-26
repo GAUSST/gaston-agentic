@@ -219,5 +219,6 @@ def claim_worker(root, folder, attempt):
         if worker.get('attempt') == attempt and worker.get('pid') != os.getpid():
             return False
         orch.put(folder/'worker.json', {'pid':os.getpid(), 'attempt':attempt,
-                 'started_at':launch['started_at'], 'host':socket.gethostname(), **process_identity(os.getpid())})
+                 'started_at':launch['started_at'], 'claimed_at':time.time(),
+                 'host':socket.gethostname(), **process_identity(os.getpid())})
         return True
