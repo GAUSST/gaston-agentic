@@ -85,17 +85,19 @@ class CentralDispatchTests(unittest.TestCase):
                 self.assertFalse((self.project / '.agentic/local').exists())
                 self.assertFalse((self.project / '.gaston').exists())
 
-    def test_update_refuses_unverified_legacy_workspace(self):
+    def test_migrate_is_disabled_and_preserves_all_project_files(self):
         before = self.manifest.read_bytes()
-        result = self.cli('update')
+        result = self.cli('migrate')
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn('Legacy launcher is not verifiably owned by Gaston', result.stderr)
-        self.assertNotIn('PROJECT LOCAL', result.stdout + result.stderr)
+        self.assertIn('dev migrate is disabled', result.stderr)
         self.assertEqual(self.manifest.read_bytes(), before)
-        self.assertFalse((self.project / '.agentic/local').exists())
+        self.assertTrue((self.project / '.agentic/launcher.py').is_file())
+        self.assertTrue((self.project / '.agentic/eng.py').is_file())
         self.assertFalse((self.project / '.gaston').exists())
 
-    def test_update_dispatches_project_and_global_paths(self):
+    def test_update_dispatches_project_and_global_paths_without_reading_legacy_manifest(self):
+        self.manifest.write_text("not a manifest", encoding="utf-8")
+        before = self.manifest.read_bytes()
         with patch.dict(os.environ, {'GASTON_ENGINE_MODE': 'central',
                                      'GASTON_ROOT': str(self.project)}), \
              patch.object(sys, 'argv', ['dev', 'update']), \
@@ -103,6 +105,7 @@ class CentralDispatchTests(unittest.TestCase):
              patch.object(gaston_cli, '_global_update', return_value=0) as update:
             self.assertEqual(gaston_cli.main(), 0)
             update.assert_called_once_with([], self.project)
+            self.assertEqual(self.manifest.read_bytes(), before)
             (self.project / '.agentic/launcher.py').unlink()
             update.reset_mock()
             self.assertEqual(gaston_cli.main(), 0)
