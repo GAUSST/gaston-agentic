@@ -397,17 +397,19 @@ def ok_bin(binary):
     return shutil.which(binary) is not None
 
 
-def yesno(question, default=False, *, interactive=True, lang='en'):
+def yesno(question, default=False, *, interactive=True, lang='en', read=None, write=None):
     if not interactive: return False
+    read = input if read is None else read
+    write = print if write is None else write
     effective_lang = CURRENT_LANGUAGE.get() if lang == 'en' else lang
     suffix = (f'(oui/non) [défaut : {"Oui" if default else "Non"}]' if effective_lang == 'fr'
               else f'(yes/no) [default: {"Yes" if default else "No"}]')
     while True:
-        response = input(ui.prompt_label(f'    {translate(question.strip(), effective_lang)} {suffix}: ', default=suffix)).strip().lower()
+        response = read(ui.prompt_label(f'    {translate(question.strip(), effective_lang)} {suffix}: ', default=suffix)).strip().lower()
         if not response: return default
         if response in ('yes', 'y', 'oui', 'o'): return True
         if response in ('no', 'n', 'non'): return False
-        print(tr(effective_lang, '    Please answer yes or no, or press Enter for the stated default.',
+        write(tr(effective_lang, '    Please answer yes or no, or press Enter for the stated default.',
                                   '    Répondez oui ou non, ou appuyez sur Entrée pour la valeur par défaut.'))
 
 

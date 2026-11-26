@@ -508,7 +508,7 @@ def command(root: Path, argv: list[str], *, confirm=input, display=print,
     if version(found['tag']) <= version(current['release']):
         display(f'Gaston is current: {current["release"]} (trusted source: {repo}).')
         return 0
-    display(f'Gaston: {current["release"]} → {found["tag"]} (publisher: {repo})')
+    display(f'Gaston: {current["release"]} to {found["tag"]} (publisher: {repo})')
     if found['notes']:
         display('Release notes:\n' + found['notes'])
     if arguments.check:

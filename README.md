@@ -48,7 +48,7 @@ dev init
 dev
 ```
 
-The installed engine is independent of the source checkout. Application-specific state lives under `.gaston/`. `dev` does not implicitly initialize a project. Run `dev migrate` to consolidate a legacy `.agentic/` directory or finish cleanup when both `.agentic/` and `.gaston/` already exist. In ordinary application projects it preserves the legacy tree inside `.gaston/migration-backups/` before removing the scattered root directory. In the Gaston source repository, `.agentic/` is tracked engine code and is never moved. The old checkout shim remains a compatibility path only. In an interactive terminal, `dev init` creates the project adapter and immediately opens the complete setup wizard; no `--setup` flag is needed. A non-interactive `dev init` creates the adapter only; rerun `dev init` in an interactive terminal to configure providers.
+The installed engine is independent of the source checkout. Application-specific state lives under `.gaston/`. `dev` does not implicitly initialize a project. Run `dev update` to consolidate a legacy `.agentic/` directory or finish cleanup when both `.agentic/` and `.gaston/` already exist. In ordinary application projects it preserves the legacy tree inside `.gaston/migration-backups/` before removing the scattered root directory. In the Gaston source repository, `.agentic/` is tracked engine code and is never moved. The old checkout shim remains a compatibility path only. In an interactive terminal, `dev init` creates the project adapter and immediately opens the complete setup wizard; no `--setup` flag is needed. A non-interactive `dev init` creates the adapter only; rerun `dev init` in an interactive terminal to configure providers.
 
 **Resumable setup:** The read-only installation plan and `GO` confirmation still appear on **every interactive `dev init`**. Once you approve, the wizard immediately saves your selected language, AI architecture, role models, reasoning, accepted testing-category approvals and completed setup checkpoints to `.gaston/config.json` and `.gaston/local/setup-progress.json`. If setup is interrupted or an installation fails, simply rerun `dev init`: previously completed choices are reused, and only unfinished installation work is attempted. The installer rechecks actual tool readiness rather than assuming a saved checkpoint means an installed tool works. Existing language/AI selections are shown as saved, not asked again; the optional **“Change saved language or AI configuration?”** question defaults to No. Choose Yes when you want to reselect language, architecture, role models or reasoning. Even if you choose No, saved incompatible or missing model/effort settings are repaired interactively. Use `dev models` to change role models, reasoning or the Advisor, even during incomplete setup, then rerun `dev init` to finish initialization. An interrupted setup remains **not ready** until the final verification succeeds. A declined testing-category installation is not treated as approved.
  Setup prompts show the exact Enter behavior: `[default: Yes]` for essential testing categories needing setup, explicit defaults for other confirmations, `[default: claude-sonnet-5-5]` for model choices, and `[optional; Enter to skip]` for optional values. The French setup uses corresponding French labels.
@@ -65,7 +65,7 @@ dev sessions    # Agent connections and recent activity
 dev models      # Choose models, reasoning and Claude Lead Advisor
 dev init        # Finish or revisit setup
 dev uninstall   # Preview and remove Gaston Agentic
-dev update      # Check and install a user-approved signed release
+dev update      # Verify signed release and consolidate legacy state; default Yes
 ```
 
 All commands except init and uninstall require completed setup; `uninstall` works even when setup is incomplete.
@@ -90,7 +90,7 @@ Tests must run before they can be reported as passed. Missing database, device o
 
 ## Upgrade (keep your work)
 
-For central installations, run `dev update` and approve the verified signed release. Updates activate a versioned global engine and preserve individual `.gaston/` project state. `dev update --rollback` restores the previous engine when available. Existing legacy workspaces must follow the explicit migration guidance in `docs/CENTRAL_ENGINE_MIGRATION.md`.
+For central installations, run `dev update` and approve the verified signed release. Updates activate a versioned global engine and safely consolidate legacy state when needed, using one yes/no confirmation (default Yes). Interactive `dev init` suggests the update but does not install or migrate. `dev update --rollback` restores the previous engine when available. Existing legacy workspaces must follow the explicit migration guidance in `docs/CENTRAL_ENGINE_MIGRATION.md`.
 
 ## Engineering workflow
 
@@ -145,6 +145,6 @@ The Lead may declare ordinary non-executable prose paths before verification. Re
 
 Gaston keeps the engine **outside your application**. Run `dev init` in an existing project to initialize a small `.gaston/` adapter without copying runtime Python code, internal tests or release workflows. Run `dev init --setup` for full guided provider configuration. Project context, decisions, tasks, run evidence and provider session bindings stay in the project; private runtime data is excluded by `.gaston/.gitignore`.
 
-Legacy `.agentic` projects remain usable until you explicitly approve `dev migrate`. This migration checksum-verifies and preserves project context before removing verified legacy engine files. `dev uninstall` defaults to keeping project memory and offers a separately confirmed full erase. Signed global updates and rollback are isolated from applications.
+Legacy `.agentic` projects remain usable until you explicitly approve `dev update`. This migration checksum-verifies and preserves project context before removing verified legacy engine files. `dev uninstall` defaults to keeping project memory and offers a separately confirmed full erase. Signed global updates and rollback are isolated from applications.
 
 See [central-engine architecture and release acceptance](docs/CENTRAL_ENGINE_MIGRATION.md) for limitations and mandatory real-provider verification. The Windows cross-platform hook-refresh and `.cmd` launch hardening is included in v1.6.9. CI covers automated platform regressions; authenticated Claude ↔ Codex delegation must still be verified on a real developer machine.

@@ -75,7 +75,7 @@ class CentralDispatchTests(unittest.TestCase):
         self.assertFalse((self.project / '.gaston').exists())
 
     def test_preview_only_allows_help(self):
-        for arguments in (('update',), ('uninstall',), ('models',),
+        for arguments in (('uninstall',), ('models',),
                           ('sessions',), ()):
             with self.subTest(arguments=arguments):
                 result = self.cli(*arguments)
@@ -84,6 +84,29 @@ class CentralDispatchTests(unittest.TestCase):
                 self.assertTrue(self.manifest.is_file())
                 self.assertFalse((self.project / '.agentic/local').exists())
                 self.assertFalse((self.project / '.gaston').exists())
+
+    def test_update_refuses_unverified_legacy_workspace(self):
+        before = self.manifest.read_bytes()
+        result = self.cli('update')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('Legacy launcher is not verifiably owned by Gaston', result.stderr)
+        self.assertNotIn('PROJECT LOCAL', result.stdout + result.stderr)
+        self.assertEqual(self.manifest.read_bytes(), before)
+        self.assertFalse((self.project / '.agentic/local').exists())
+        self.assertFalse((self.project / '.gaston').exists())
+
+    def test_update_dispatches_project_and_global_paths(self):
+        with patch.dict(os.environ, {'GASTON_ENGINE_MODE': 'central',
+                                     'GASTON_ROOT': str(self.project)}), \
+             patch.object(sys, 'argv', ['dev', 'update']), \
+             patch.object(gaston_cli, '_managed_bootstrap', return_value=None), \
+             patch.object(gaston_cli, '_global_update', return_value=0) as update:
+            self.assertEqual(gaston_cli.main(), 0)
+            update.assert_called_once_with([], self.project)
+            (self.project / '.agentic/launcher.py').unlink()
+            update.reset_mock()
+            self.assertEqual(gaston_cli.main(), 0)
+            update.assert_called_once_with([], None)
 
     def test_uninitialized_project_not_auto_initialized(self):
         (self.project / '.agentic/launcher.py').unlink()
