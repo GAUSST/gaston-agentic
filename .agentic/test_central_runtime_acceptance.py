@@ -82,6 +82,16 @@ class CentralRuntimeAcceptanceTests(unittest.TestCase):
         self.assertFalse((self.root / ".agentic").exists())
         self.assertEqual(self.app.read_text(), "print('app is user owned')\n")
 
+    def test_central_learning_and_incident_paths_stay_project_owned(self):
+        import learning_engine, runtime_recovery
+        from unittest.mock import patch
+        with patch.dict(os.environ,{'GASTON_ENGINE_MODE':'central'}):
+            report=learning_engine.collect(self.root)
+            self.assertEqual(report['status'],'ready')
+            self.assertTrue((self.root/'.gaston/local/learning/observations.json').is_file())
+            self.assertFalse((self.root/'.agentic').exists())
+            self.assertEqual(runtime_recovery.incidents(self.root),[])
+
     def test_unconfigured_project_is_not_auto_configured(self):
         self.assertEqual(self.dev("init").returncode, 0)
         session = self.dev("sessions")

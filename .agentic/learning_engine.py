@@ -129,7 +129,7 @@ def health(root, relative_path=None, max_files=300):
     """Conservative static hints, not proof of dead code. Python AST + Java private methods."""
     root=Path(root).resolve()
     if relative_path is None:
-        relative_path=project_state_name()
+        relative_path='.' if central_mode() else project_state_name()
     target=root if relative_path=='.' else evo.safe(root,relative_path)
     if not target.exists():raise ValueError('Unknown code health path')
     if any(p in {'local','runs','tasks','.git','.env'} or p.startswith('.env') for p in Path(relative_path).parts):raise ValueError('Private/generated path')

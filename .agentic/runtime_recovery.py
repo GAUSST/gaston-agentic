@@ -158,9 +158,10 @@ def record_internal_error(root, operation, exc, *, task_id=None):
     root = Path(root).resolve()
     from orchestration import put, read_record, mutation_guard
     frames = []
+    runtime_root = Path(__file__).resolve().parent if central_mode() else root/'.agentic'
     for frame in traceback.extract_tb(exc.__traceback__):
         path = Path(frame.filename).resolve()
-        if path.parent == root/'.agentic' and path.suffix == '.py':
+        if path.parent == runtime_root and path.suffix == '.py':
             frames.append(f'{path.name}:{frame.lineno}:{frame.name}')
     if not frames:
         return None
@@ -176,15 +177,19 @@ def record_internal_error(root, operation, exc, *, task_id=None):
                 'first_seen_at': prior.get('first_seen_at', time.time()), 'last_seen_at': time.time(),
                 'task_id': task_id or prior.get('task_id'), 'status': 'repair_required'}
         put(path, case)
-    return {**case, 'next_action': 'Lead: inspect toolkit source and reproduce the defect; stage_evolution with incident_id, regression and source review; validate and queue. Do not retry blindly or delegate toolkit repair to Builder.'}
+    next_action = ('Preserve the incident and report engine defects for correction through a verified signed release; do not stage project-local toolkit changes.' if central_mode() else 'Lead: inspect toolkit source and reproduce the defect; stage_evolution with incident_id, regression and source review; validate and queue. Do not retry blindly or delegate toolkit repair to Builder.')
+    return {**case, 'next_action': next_action}
 
 
 def incidents(root):
     from orchestration import read_record
-    from evolution import status
     root = Path(root)
-    # Correlate candidates using their actual lifecycle, never fabricate repair success.
-    candidates = status(root)['candidates']
+    # A central installation has no project-local evolution candidate lifecycle.
+    if central_mode():
+        candidates = []
+    else:
+        from evolution import status
+        candidates = status(root)['candidates']
     cases = []
     for path in sorted(_store(root).glob('incident-*.json')):
         if path.is_symlink():
