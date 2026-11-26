@@ -47,7 +47,7 @@ def declared_review_documents(folder):
     return frozenset(x for x in task.get('review_only_documents',[]) if isinstance(x,str) and review_only_document(x) and x not in specs)
 
 
-def revision_fingerprint(folder: Path, *, review_only=False) -> str | None:
+def revision_fingerprint(folder: Path, *, review_only=False, input_hashes=None) -> str | None:
     """Bind evidence to actual task source/deletions, not just a running task ID."""
     if folder.parent.name!='runs' or folder.parent.parent.name!=project_state_name():return None
     root=folder.parent.parent.parent.resolve()
@@ -63,37 +63,42 @@ def revision_fingerprint(folder: Path, *, review_only=False) -> str | None:
     if review_only:
         # Changes in classification never retroactively make old evidence reusable.
         sha.update(json.dumps(sorted(prose)).encode()+b'\0')
-    for name in sorted(set(p for p in paths if isinstance(p,str))):
+    for name in sorted({p.replace('\\','/') for p in paths if isinstance(p,str)}):
+        part=hashlib.sha256()
+        def add(data):
+            sha.update(data)
+            if input_hashes is not None:part.update(data)
         path=root/name
         if Path(name).is_absolute() or '..' in Path(name).parts or not path.resolve().is_relative_to(root):return None
         if path.is_symlink():return None
         if review_only and name in prose and not path.is_dir():continue
-        sha.update(name.encode('utf8'));sha.update(b'\0')
-        if not path.exists():sha.update(b'<deleted>')
+        add(name.encode('utf8'));add(b'\0')
+        if not path.exists():add(b'<deleted>')
         elif path.is_file():
             try:
                 with path.open('rb') as f:
-                    for chunk in iter(lambda:f.read(1024*1024),b''):sha.update(chunk)
+                    for chunk in iter(lambda:f.read(1024*1024),b''):add(chunk)
             except OSError:return None
         elif path.is_dir():
             # Builder reports may include new directories in changed_files.
             # Bind the review to *every* contained file so adding a new source
             # invalidates evidence just as editing an existing file does.
-            sha.update(b'<directory>\0')
+            add(b'<directory>\0')
             try:
                 for child in sorted(path.rglob('*')):
                     if child.is_symlink() or not child.resolve().is_relative_to(root):return None
                     child_name=child.relative_to(root).as_posix()
-                    sha.update(child_name.encode('utf8'));sha.update(b'\0')
-                    if child.is_dir():sha.update(b'<directory>')
+                    add(child_name.encode('utf8'));add(b'\0')
+                    if child.is_dir():add(b'<directory>')
                     elif child.is_file():
                         with child.open('rb') as f:
-                            for chunk in iter(lambda:f.read(1024*1024),b''):sha.update(chunk)
+                            for chunk in iter(lambda:f.read(1024*1024),b''):add(chunk)
                     else:return None
-                    sha.update(b'\0')
+                    add(b'\0')
             except OSError:return None
         else:return None
-        sha.update(b'\0')
+        add(b'\0')
+        if input_hashes is not None:input_hashes[name]=part.hexdigest()
     return sha.hexdigest()
 
 
@@ -101,10 +106,13 @@ def record(folder: Path, kind: str, outcome: dict, *, parameters: dict | None=No
     if kind not in GATE_TYPES:raise ValueError('Unsupported acceptance type')
     if not isinstance(outcome,dict) or outcome.get('status') not in ('pass','fail','blocked'):
         raise ValueError('Real verification-tool outcome required')
+    inputs={}
+    fingerprint=revision_fingerprint(folder,input_hashes=inputs)
     entry={'id':secrets.token_hex(8),'recorded_at':time.time(),
            'kind':kind,'gate':GATE_TYPES[kind],
            'result':outcome['status'],'parameters':parameters or {},
-           'evidence':outcome,'revision_fingerprint':revision_fingerprint(folder),
+           'evidence':outcome,'revision_fingerprint':fingerprint,
+           **({'revision_inputs':inputs} if fingerprint and len(inputs)<=512 else {}),
            **({'reused_from':reused_from} if reused_from else {}),
            **({'runtime_revision_fingerprint':revision_fingerprint(folder,review_only=True)} if kind=='backend' else {})}
     path=folder/'acceptance-evidence.json'
@@ -112,6 +120,45 @@ def record(folder: Path, kind: str, outcome: dict, *, parameters: dict | None=No
     existing.append(entry)
     path.write_text(json.dumps(existing,indent=2,ensure_ascii=False)+'\n',encoding='utf8')
     return entry
+
+
+def changed_inputs(before, after):
+    """Report changed explicit task paths; directories are aggregate hashes."""
+    if not isinstance(before,dict) or not isinstance(after,dict):return []
+    return sorted(p for p in set(before)|set(after) if before.get(p)!=after.get(p))[:40]
+
+
+def expired_checks(folder, current_rows):
+    """Explain stale gate evidence without reclassifying or accepting it."""
+    current_ids={row.get('id') for row in current_rows}
+    latest={}
+    for row in read(folder):
+        if isinstance(row,dict) and row.get('kind') in GATE_TYPES:
+            latest[(row['kind'],str((row.get('parameters') or {}).get('project')))]=row
+    stale=[row for row in latest.values() if row.get('id') not in current_ids]
+    if not stale:return []
+    from task_runtime import read_record
+    worker=read_record(folder/'worker.json')
+    finished=read_record(folder/'worker-finished.json').get('finished_at')
+    boundary=max((float(x) for x in (worker.get('started_at'),finished) if isinstance(x,(int,float))),default=0)
+    inputs={}
+    fingerprint=revision_fingerprint(folder,input_hashes=inputs)
+    out=[]
+    for row in stale:
+        detail={'kind':row['kind'],'check_id':row.get('id'),'project':(row.get('parameters') or {}).get('project')}
+        stamp=row.get('recorded_at')
+        if isinstance(stamp,(int,float)) and stamp<boundary:
+            detail['reason']='newer_builder_attempt'
+        elif fingerprint is None:
+            detail['reason']='task_inputs_unverifiable'
+        elif row.get('revision_fingerprint')!=fingerprint:
+            detail['reason']='task_inputs_changed'
+            if isinstance(row.get('revision_inputs'),dict):
+                detail['changed_inputs']=changed_inputs(row['revision_inputs'],inputs)
+        else:
+            detail['reason']='verification_scope_changed_or_evidence_unverifiable'
+        out.append(detail)
+    return out[:20]
 
 
 def summarize(plan: dict, evidence: list[dict]) -> dict:

@@ -2,7 +2,7 @@
 from __future__ import annotations
 from contextlib import contextmanager
 from pathlib import Path
-import json, os, secrets, socket, time
+import json, os, re, secrets, socket, time
 import xml.etree.ElementTree as ET
 from project_layout import project_state
 from session_store import process_identity, process_state
@@ -28,15 +28,48 @@ def active(root):
     if p.exists() and not row:raise ValueError('Unreadable verification reservation')
     return {**row,'owner_state':process_state(row.get('owner'))} if row else None
 
+def _archive_interrupted(root, row, *, proof):
+    archive=project_state(root)/'local'/'interrupted-verifications'/('reservation-'+secrets.token_hex(8)+'.json')
+    orch.put(archive,{**row,'recovered_at':time.time(),'outcome':'interrupted_no_acceptance','recovery_proof':proof})
+    _path(root).unlink()
+
+
+def _recover_proven_windows_job(root, row):
+    """Call only under mutation_guard. Never clear a live or unknown owner.
+
+    Only single-command Flutter checks use this marker. Mobile, browser and
+    backend checks can own other resources, so retain their manual recovery.
+    Old releases did not record a named job; do not infer safety for them.
+    """
+    if not row or row.get('owner_state')!='dead' or row.get('kind') not in ('flutter_analyze','flutter_tests'):
+        return False
+    owner=row.get('owner') or {}
+    token=row.get('token')
+    if (not owner.get('start_ticks') or owner.get('host')!=socket.gethostname()
+            or not isinstance(token,str) or not re.fullmatch(r'[0-9a-f]{32}',token)):
+        return False
+    from platform_compat import windows_session_id, windows_verification_job_gone
+    session=windows_session_id()
+    name='Local\\GastonVerification-'+token
+    if (session is None or row.get('windows_session')!=session
+            or row.get('windows_job')!=name or not windows_verification_job_gone(name)):
+        return False
+    _archive_interrupted(root,row,proof='dead_owner_and_destroyed_windows_job')
+    return True
+
+
+def recover_proven_interruption(root):
+    with orch.mutation_guard(root):
+        return _recover_proven_windows_job(root,active(root))
+
+
 def recover_reservation(root,*,developer_confirmed=False):
     if developer_confirmed is not True:raise ValueError('Developer confirmation of terminated owned runtime processes is required')
     with orch.mutation_guard(root):
         row=active(root)
         if not row:return {'status':'ready','note':'No stale verification reservation'}
         if row['owner_state']!='dead':raise ValueError('Verification owner is live or cannot be verified dead; do not clear')
-        archive=project_state(root)/'local'/'interrupted-verifications'/('reservation-'+secrets.token_hex(8)+'.json')
-        orch.put(archive,{**row,'recovered_at':time.time(),'outcome':'interrupted_no_acceptance'})
-        _path(root).unlink()
+        _archive_interrupted(root,row,proof='developer_confirmed_terminated_processes')
         return {'status':'ready','note':'Archived interrupted reservation; rerun the actual gate. No evidence passed.'}
 
 
@@ -109,6 +142,7 @@ def reserve(root,kind,project,*,integrated=False,task_id=None):
     root=Path(root).resolve();token=secrets.token_hex(16)
     with orch.mutation_guard(root):
         prior=active(root)
+        if prior and _recover_proven_windows_job(root,prior):prior=None
         if prior:raise Busy('Another managed verification is active or unreconciled; collect its outcome.',blocker='verification_active',reservation=prior)
         scope=scope_for(root,kind,project,integrated=integrated)
         before=fingerprints(root,scope)
@@ -123,10 +157,23 @@ def reserve(root,kind,project,*,integrated=False,task_id=None):
                 if overlaps(scope,task.get('write_scope')):
                     conflicts.append({'task_id':folder.name,'scope':task.get('write_scope'),'stage':state['stage']})
         if conflicts:raise Busy('Verification scope overlaps active implementation, or isolation is unknown.',blocker='workspace_not_idle',workers=conflicts)
+        job={}
+        if kind in ('flutter_analyze','flutter_tests'):
+            from platform_compat import windows_session_id
+            session=windows_session_id()
+            if session is not None:
+                job={'windows_job':'Local\\GastonVerification-'+token,'windows_session':session}
         orch.put(_path(root),{'token':token,'owner':{'pid':os.getpid(),'host':socket.gethostname(),**process_identity(os.getpid())},
-                              'kind':kind,'project':project,'task_id':task_id,'read_scope':scope,'started_at':time.time()})
-    try:yield {'read_scope':scope,'fingerprints':before,'parallel_with':[w['task_id'] for w in running]}
+                              'kind':kind,'project':project,'task_id':task_id,'read_scope':scope,'started_at':time.time(),**job})
+    try:yield {'read_scope':scope,'fingerprints':before,'parallel_with':[w['task_id'] for w in running],**job}
     finally:
         with orch.mutation_guard(root):
             current=active(root)
-            if current and current.get('token')==token:_path(root).unlink(missing_ok=True)
+            if current and current.get('token')==token:
+                # If a Windows job still exists, cleanup is unconfirmed.
+                # Preserve the reservation for safe recovery, not a false unlock.
+                if job:
+                    from platform_compat import windows_verification_job_gone
+                    if not windows_verification_job_gone(job['windows_job']):
+                        raise ValueError('Windows verification job cleanup is unconfirmed; reservation preserved')
+                _path(root).unlink(missing_ok=True)

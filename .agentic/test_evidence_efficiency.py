@@ -55,6 +55,26 @@ class EvidenceEfficiencyTests(unittest.TestCase):
                     'evidence':{'stdout_tail':'Tests run: 2, Failures: 0, Errors: 0, Skipped: 0','stderr_tail':''}}
         self.stack.enter_context(patch.object(vm,'run_backend_tests',side_effect=run))
 
+    def test_flutter_evidence_expiration_identifies_changed_inputs(self):
+        folder=self.folders['task-one-0001']
+        build=json.loads((folder/'build.json').read_text())
+        flutter=self.root/'mobile'
+        flutter.mkdir()
+        (flutter/'pubspec.yaml').write_text('name: demo')
+        build['changed_files']=[r'mobile\pubspec.yaml','mobile/pubspec.yaml']
+        (folder/'build.json').write_text(json.dumps(build))
+        row=audit.record(folder,'flutter_analyze',{'status':'pass'},parameters={'project':'mobile'})
+        self.assertEqual(list(row['revision_inputs']),['mobile/pubspec.yaml'])
+        self.assertEqual(audit.expired_checks(folder,audit.current(folder)),[])
+        (flutter/'build').mkdir()
+        (flutter/'build/app.apk').write_bytes(b'generated')
+        self.assertEqual(len(audit.current(folder)),1)
+        (flutter/'pubspec.yaml').write_text('name: changed')
+        self.assertEqual(audit.current(folder),[])
+        stale=audit.expired_checks(folder,[])
+        self.assertEqual(stale[0]['reason'],'task_inputs_changed')
+        self.assertEqual(stale[0]['changed_inputs'],['mobile/pubspec.yaml'])
+
     def test_cross_task_reuses_exact_verified_runner_once(self):
         a=vm.run_task_acceptance_check('task-one-0001','backend','backend','PricingServiceTest')
         b=vm.run_task_acceptance_check('task-two-0002','backend','backend','PricingServiceTest')

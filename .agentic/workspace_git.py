@@ -198,7 +198,7 @@ def existing_changes(root: Path, project: dict | None = None) -> dict[str, str]:
                 value = h.hexdigest()
             else:
                 value = 'non-regular'
-            baseline[str(path.relative_to(root))] = value
+            baseline[path.relative_to(root).as_posix()] = value
     return dict(sorted(baseline.items()))
 
 

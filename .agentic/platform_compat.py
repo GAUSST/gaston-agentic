@@ -206,13 +206,50 @@ def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3)
 
 
 
+def windows_session_id():
+    """A Local job name is only meaningful in the same Windows session."""
+    if not WINDOWS:
+        return None
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    fn = kernel.ProcessIdToSessionId
+    fn.argtypes = [wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    fn.restype = wintypes.BOOL
+    session = wintypes.DWORD()
+    return session.value if fn(os.getpid(), ctypes.byref(session)) else None
+
+
+def windows_verification_job_gone(name):
+    """Read-only existence check; unknown/denied is never proof of cleanup.
+
+    Windows retains a job until its last handle is closed and associated
+    processes have terminated. A private, session-scoped named job gives the
+    next verifier proof that the old owned command tree is gone.
+    """
+    if not WINDOWS or not isinstance(name, str) or not re.fullmatch(r'Local\\GastonVerification-[0-9a-f]{32}', name):
+        return False
+    import ctypes
+    from ctypes import wintypes
+    kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+    kernel.OpenJobObjectW.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel.OpenJobObjectW.restype = wintypes.HANDLE
+    kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel.CloseHandle.restype = wintypes.BOOL
+    handle = kernel.OpenJobObjectW(0x0004, False, name)  # JOB_OBJECT_QUERY
+    if not handle:
+        return ctypes.get_last_error() == 2  # ERROR_FILE_NOT_FOUND only
+    kernel.CloseHandle(handle)
+    return False
+
+
 class _WindowsVerificationJob:
     """Own the complete verifier process tree, even after its parent exits.
 
     The Python gate starts without launching the command. Assign its process
     to a kill-on-close job before allowing it to create descendants.
     """
-    def __init__(self):
+    def __init__(self, name=None):
         import ctypes
         from ctypes import wintypes
 
@@ -258,9 +295,13 @@ class _WindowsVerificationJob:
             fn.argtypes = args
             fn.restype = result
         self.kernel, self.ctypes, self.accounting = kernel, ctypes, Accounting
-        self.handle = kernel.CreateJobObjectW(None, None)
+        ctypes.set_last_error(0)
+        self.handle = kernel.CreateJobObjectW(None, name)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
+        if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+            self.close()
+            raise RuntimeError('Verification job name already exists; refusing to reuse')
         limits = ExtendedLimits()
         limits.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
         if not kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
@@ -294,7 +335,7 @@ class _WindowsVerificationJob:
             self.handle = None
 
 
-def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=9000, cancel_event=None):
+def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=9000, cancel_event=None, job_name=None):
     """Bound execution and cleanup without waiting for inherited output-pipe EOF.
 
     Disk-backed private output handles survive a descendant retaining stdout
@@ -320,7 +361,7 @@ def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=90
             else:
                 kwargs = dict(cwd=cwd, env=env, stdout=out, stderr=err, close_fds=True, **popen_kwargs())
                 if WINDOWS:
-                    job = _WindowsVerificationJob()
+                    job = _WindowsVerificationJob(job_name)
                     # The base interpreter avoids a venv redirector spawning an
                     # unassigned intermediary. The gate cannot launch before
                     # the parent explicitly releases it after job assignment.
