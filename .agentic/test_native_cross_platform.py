@@ -293,6 +293,24 @@ class NativePlatformTests(unittest.TestCase):
             self.assertEqual(built['changed_files'], ['lib/other.dart', 'lib/theme.dart'])
             self.assertEqual(built['lead_changed_files'], ['lib/theme.dart'])
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX process groups')
+    def test_denied_group_signal_requires_proof_no_live_members(self):
+        import signal
+        from unittest.mock import patch
+        with patch.object(pc.os, 'killpg', side_effect=PermissionError(1, 'denied')):
+            for snapshot, gone in [('123 Z+\n456 S\n', True), ('456 S\n', True),
+                                   ('123 S\n', False), ('bad snapshot\n', False)]:
+                with patch.object(pc.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                        [], 0, stdout=snapshot, stderr='')):
+                    if gone:
+                        self.assertFalse(pc._signal_owned_group(123, signal.SIGKILL))
+                    else:
+                        with self.assertRaises(PermissionError):
+                            pc._signal_owned_group(123, signal.SIGKILL)
+            with patch.object(pc.subprocess, 'run', side_effect=subprocess.TimeoutExpired('ps', 3)):
+                with self.assertRaises(PermissionError):
+                    pc._signal_owned_group(123, signal.SIGKILL)
+
     def test_verification_runner_stdin_is_eof_and_preserves_exit_code(self):
         import verification_mcp as vm
         result = vm.execute([sys.executable, '-c',

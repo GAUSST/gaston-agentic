@@ -168,6 +168,35 @@ def process_status(pid: int) -> str:
         return 'unknown'
 
 
+def _signal_owned_group(pgid, sig):
+    """Signal a POSIX group; macOS may deny a signal to an exiting zombie group.
+
+    Permission denied is never treated as successful cleanup unless an OS
+    process snapshot proves that the group has no non-zombie members.
+    """
+    try:
+        os.killpg(pgid, sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError as denied:
+        try:
+            listing = subprocess.run(['/bin/ps', '-A', '-o', 'pgid=', '-o', 'stat='],
+                                     stdin=subprocess.DEVNULL, capture_output=True,
+                                     text=True, timeout=3, check=True)
+            for line in listing.stdout.splitlines():
+                if not line.strip():
+                    continue
+                fields = line.split()
+                if len(fields) != 2 or not fields[0].isdigit() or not fields[1]:
+                    raise ValueError('Unverifiable process-group snapshot')
+                if int(fields[0]) == pgid and not fields[1].startswith('Z'):
+                    raise denied
+        except (OSError, ValueError, subprocess.SubprocessError):
+            raise denied
+        return False
+
+
 def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3):
     """Terminate only the captured Popen and its descendants, never an arbitrary PID."""
     if WINDOWS:
@@ -190,16 +219,16 @@ def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3)
         except psutil.NoSuchProcess:
             proc.wait(timeout=5)
         return
+    group_exists = False
     if isolated_group:
-        try: os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError: pass
+        group_exists = _signal_owned_group(proc.pid, signal.SIGTERM)
     elif proc.poll() is None:
         proc.terminate()
     try: proc.wait(timeout=grace_seconds)
     except subprocess.TimeoutExpired: pass
     if isolated_group:
-        try: os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError: pass
+        if group_exists:
+            _signal_owned_group(proc.pid, signal.SIGKILL)
     elif proc.poll() is None:
         proc.kill()
     proc.wait(timeout=5)
