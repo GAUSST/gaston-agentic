@@ -71,6 +71,45 @@ class CentralUpdaterTests(unittest.TestCase):
         with self.assertRaises(central_update.CentralUpdateError):
             central_update.stage_verified_release(self.root,"v7.8.9",payload,manifest)
 
+    def test_init_notice_only_when_published_release_is_newer(self):
+        output = []
+        with patch("central_update.current_version", return_value="v1.6.12"), \
+             patch("updater.latest", return_value={"tag":"v1.6.13"}):
+            central_update.suggest_update(output=output.append)
+        self.assertIn("Run dev update", output[0])
+        output.clear()
+        with patch("central_update.current_version", return_value="v1.6.13"), \
+             patch("updater.latest", return_value={"tag":"v1.6.13"}):
+            central_update.suggest_update(output=output.append)
+        self.assertEqual(output, [])
+        with patch("updater.latest", side_effect=RuntimeError("offline")):
+            central_update.suggest_update(output=output.append)
+        self.assertEqual(output, [])
+
+    def test_global_update_default_yes_and_no(self):
+        manifest, payload = candidate()
+        for answer in ("n", ""):
+            prompts = []
+            def confirm(prompt):
+                prompts.append(prompt)
+                return answer
+            with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root)}), \
+                 patch("updater.latest", return_value={"tag":"v7.8.9"}), \
+                 patch("updater.signed_release_commit", return_value="a"*40), \
+                 patch("updater._download", return_value=b"archive"), \
+                 patch("updater._validate_candidate", return_value=(manifest,payload)), \
+                 patch("central_migration.migrate") as migration:
+                self.assertEqual(central_update.command([], confirm=confirm), 0)
+                migration.assert_not_called()
+            self.assertEqual(len(prompts), 1)
+            self.assertIn("[default: Yes]", prompts[0])
+            self.assertEqual(central_update.pointer_file(self.root).exists(), answer == "")
+
+    def test_current_global_update_never_prompts(self):
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root)}), \
+             patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):
+            self.assertEqual(central_update.command([], confirm=lambda _: self.fail("unexpected prompt")), 0)
+
     def test_check_only_flag_is_not_a_supported_update_mode(self):
         with self.assertRaises(SystemExit) as raised:
             central_update.command(["--check"])

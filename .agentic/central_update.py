@@ -1,8 +1,8 @@
 """Signed, versioned, non-project Gaston engine activation.
 
 Managed versions live under the user's private application-data directory;
-the native dev entry point remains a stable bootstrap. Updates never edit a
-workspace, its state, sessions, application code, or the running engine tree.
+the native dev entry point remains a stable bootstrap. Project-scoped updates
+can also consolidate legacy Gaston state after one explicit approval.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 import re
 import shutil
 import sys
+import subprocess
 import tempfile
 import time
 
@@ -167,7 +168,25 @@ def activate(folder: Path, tag: str, *, expected_manifest_sha256: str):
     })
 
 
-def command(args: list[str], *, confirm=input, output=print) -> int:
+def current_version(folder: Path | None = None) -> str:
+    from importlib import metadata
+    installed = _read_pointer(folder)
+    return installed["tag"] if installed else "v" + metadata.version("gaston-agentic-cli")
+
+
+def suggest_update(*, output=print) -> None:
+    """Best-effort release notice for interactive init; never install or migrate."""
+    from updater import latest, version
+    try:
+        current = current_version()
+        release = latest(OFFICIAL_REPOSITORY)
+        if version(release["tag"]) > version(current):
+            output(f'Gaston update available: {release["tag"]} (installed {current}). Run dev update to review.')
+    except (OSError, RuntimeError, ValueError, KeyError):
+        return
+
+
+def command(args: list[str], *, root: Path | None = None, confirm=input, output=print) -> int:
     parser = argparse.ArgumentParser(prog="dev update")
     parser.add_argument("--rollback", action="store_true")
     parsed = parser.parse_args(args)
@@ -202,33 +221,54 @@ def command(args: list[str], *, confirm=input, output=print) -> int:
         output("Gaston reverted to " + previous + ".")
         return 0
 
-    # Existing legacy updater already enforces signed annotated tags, repo
-    # identity, bounded downloads, strict ZIP traversal checks and SHA-256.
+    # Verify the exact signed release before approval; migration preflight
+    # presents proposed moves before invoking the same approval callback.
     from updater import latest, signed_release_commit, _download, _github_url
     from updater import _validate_candidate, MAX_ARCHIVE, version
+    from setup_wizard import yesno
+    from central_migration import migrate, needs_migration
     release = latest(OFFICIAL_REPOSITORY)
-    if version(release["tag"]) <= version(current):
+    tag = release["tag"]
+    newer = version(tag) > version(current)
+    pending = root is not None and needs_migration(root)
+    if newer:
+        output("Gaston update available: " + current + " → " + tag)
+        commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
+        archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
+        manifest, payload = _validate_candidate(archive, tag)
+    else:
         output("Gaston is current: " + current)
+    if not newer and not pending:
         return 0
-    output("Signed Gaston update available: " + current + " → " + release["tag"])
-    commit = signed_release_commit(OFFICIAL_REPOSITORY, release["tag"])
-    archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
-    manifest, payload = _validate_candidate(archive, release["tag"])
-    if confirm("Type INSTALL " + release["tag"] + ": ").strip() != "INSTALL " + release["tag"]:
-        output("Update cancelled; no changes made.")
-        return 0
-    # Immutable version directory; active pointers swap atomically, and the
-    # previously installed engine stays available for explicit rollback.
-    stage_verified_release(folder, release["tag"], payload, manifest)
-    manifest_hash = _hash(payload[".agentic/manifest.json"][0])
-    activate(folder, release["tag"], expected_manifest_sha256=manifest_hash)
-    output("Gaston engine installed globally: " + release["tag"])
+
+    def approve():
+        question = ("Install verified update and consolidate project?" if newer and pending
+                    else "Consolidate legacy Gaston project?" if pending
+                    else "Install verified Gaston update?")
+        try:
+            accepted = yesno(question, default=True, read=confirm, write=output)
+        except EOFError:
+            accepted = False
+        if not accepted:
+            output("Update cancelled; no changes made.")
+            return False
+        if newer:
+            stage_verified_release(folder, tag, payload, manifest)
+            manifest_hash = _hash(payload[".agentic/manifest.json"][0])
+            activate(folder, tag, expected_manifest_sha256=manifest_hash)
+            output("Gaston engine installed globally: " + tag)
+        return True
+
+    if pending:
+        migrate(root, approve=approve, output=output)
+    else:
+        approve()
     return 0
 
 
-def main(args: list[str]) -> int:
+def main(args: list[str], *, root: Path | None = None) -> int:
     try:
-        return command(args)
-    except (CentralUpdateError, OSError, RuntimeError, ValueError, KeyError) as exc:
+        return command(args, root=root)
+    except (CentralUpdateError, OSError, RuntimeError, ValueError, KeyError, subprocess.TimeoutExpired) as exc:
         print("Gaston global update: " + str(exc), file=sys.stderr)
         return 2

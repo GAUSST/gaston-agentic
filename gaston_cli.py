@@ -126,8 +126,9 @@ def _central_module(name: str, root: Path | None = None):
 
 
 def _global_update(args: list[str], root: Path | None = None) -> int:
-    module = _central_module('central_update', root)
-    return module.main(args)
+    trusted_root = root or Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
+    module = _central_module('central_update', trusted_root)
+    return module.main(args, root=root)
 
 
 def _central_migrate(root: Path) -> int:
@@ -219,17 +220,14 @@ def main():
             arguments = sys.argv[1:]
             if arguments == ['init', '--setup']:
                 raise ValueError('`dev init --setup` is unnecessary; run `dev init` in an interactive terminal.')
-            # A central update is global and may be invoked outside any
-            # project. Existing legacy workspaces retain their older updater.
+            # The installed updater owns both engine activation and project
+            # consolidation. Outside a project it updates the engine only.
+            # Explicit legacy mode continues using the legacy local updater.
             if arguments and arguments[0] == 'update':
-                try:
-                    update_root, update_kind = find_project(start)
-                except ValueError:
-                    update_root, update_kind = start, 'new'
-                if update_kind != 'legacy':
-                    return _global_update(arguments[1:], update_root)
-                if mode == 'central':
-                    raise RuntimeError('Explicit legacy workspace migration is required for central execution')
+                update_root, update_kind = find_project(start, allow_new=True)
+                return _global_update(arguments[1:], None if update_kind == 'new' else update_root)
+            if arguments == ['init'] and sys.stdin.isatty():
+                _central_module('central_update', start).suggest_update()
             if mode == 'central':
                 if arguments == ['init']:
                     return _central_init()

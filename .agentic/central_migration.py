@@ -286,7 +286,22 @@ def _is_gaston_source_checkout(root: Path) -> bool:
     return bool(re.search(r'(?m)^name\s*=\s*["\']gaston-agentic-cli["\']\s*$', project))
 
 
-def migrate(root: Path, *, confirmation=input, output=print):
+def needs_migration(root: Path) -> bool:
+    """Identify pending consolidation without modifying project state."""
+    root = Path(root).resolve()
+    old = root / ".agentic"
+    db = root / ".gaston-dev-db"
+    has_db = db.exists() or db.is_symlink()
+    if _is_gaston_source_checkout(root):
+        return (root / ".gaston/project.json").is_file() and has_db
+    return old.exists() or old.is_symlink() or has_db
+
+
+def migrate(root: Path, *, confirmation=input, output=print, approve=None):
+    # The normal update supplies its single approval after migration preflight.
+    # Explicit recovery callers retain the established recovery confirmation.
+    if approve is None:
+        approve = lambda: confirmation("Type MIGRATE GASTON to approve: ").strip() == "MIGRATE GASTON"
     root = Path(root).resolve()
     old = root / ".agentic"
     target = root / ".gaston"
@@ -306,7 +321,7 @@ def migrate(root: Path, *, confirmation=input, output=print):
         output("GASTON SOURCE CHECKOUT — DEVELOPMENT DB CONSOLIDATION")
         output("  .agentic/ is the tracked Python engine package and will remain untouched.")
         output("  Only .gaston-dev-db/ will move under .gaston/local/dev-db/.")
-        if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+        if not approve():
             output("Migration cancelled; no files changed.")
             return False
         moved = _move_legacy_dev_db(root)
@@ -322,7 +337,7 @@ def migrate(root: Path, *, confirmation=input, output=print):
                     raise MigrationError("Close all Gaston sessions and managed workers before migration")
                 output("GASTON CENTRAL — DEVELOPMENT DB DIRECTORY MIGRATION")
                 output("  Credentials and any unknown files will be preserved under .gaston/local/dev-db/.")
-                if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+                if not approve():
                     output("Migration cancelled; no files changed.")
                     return False
                 moved = _move_legacy_dev_db(root)
@@ -358,7 +373,7 @@ def migrate(root: Path, *, confirmation=input, output=print):
     output("  Existing central files are never overwritten; conflicting state stops the operation.")
     output("  Optional development DB credentials will move under .gaston/local/dev-db/.")
     output("  Provider-native .claude and .codex hook entrypoints are not moved.")
-    if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+    if not approve():
         output("Migration cancelled; no files changed.")
         return False
 

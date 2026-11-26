@@ -3,19 +3,15 @@
 ## Central installations (v1.6+)
 
 Close active Gaston sessions, then run `dev update` from an application workspace
-or an ordinary directory outside legacy toolkit checkouts. The official
+or an ordinary directory outside any project. Interactive `dev init` checks for a newer published release and suggests `dev update`; it never installs or migrates. The official
 publisher is pinned to GAUSST/gaston-agentic. No publisher configuration is
 required for a central installation. The updater checks for a newer published
 stable release, verifies the signed annotated tag and exact-commit manifest,
-and asks for explicit installation approval. It stages the verified engine in
+and uses the normal yes/no prompt (default Yes). It stages the verified engine in
 the global version store and activates it using a version pointer.
 
-Project-owned .gaston state, sessions and application source are not part of
-the update. `dev update --rollback` restores a recorded previous version when
-available. An ordinary launch never installs an update automatically. Legacy
-project-local installations retain their own updater and explicit publisher
-trust configuration; do not apply legacy overlay instructions to central
-installations.
+Inside a project, the same confirmation also authorizes safe legacy state consolidation, even when the engine is already current. Existing state is never overwritten; active sessions and conflicts stop migration, and legacy files are archived and verified before removal. Outside a project the update only activates the engine. Application source remains untouched. `dev update --rollback` restores a recorded previous version when
+available. An ordinary launch never installs an update automatically. Explicit legacy mode retains its own updater and publisher trust configuration. When upgrading from v1.6.12 or earlier, the old running updater cannot execute the new lifecycle: run `dev update` again inside the project after installing the new version if consolidation is pending.
 
 ## Maintainer release process
 

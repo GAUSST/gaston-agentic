@@ -10,6 +10,9 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
+from importlib import metadata
+import central_update
 
 CLI = Path(__file__).resolve().parent.parent / "gaston_cli.py"
 ENGINE = Path(__file__).resolve().parent
@@ -50,6 +53,34 @@ class CentralMigrationTests(unittest.TestCase):
         return subprocess.run([sys.executable, str(CLI), *args],
                               cwd=self.root, env=self.env, input=answer,
                               text=True, capture_output=True, timeout=35)
+
+    def test_update_current_engine_consolidates_mixed_project_with_one_default_yes(self):
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project", "engine": "gaston-agentic-cli",
+            "created_with": "1.6.12"
+        }), encoding="utf-8")
+        prompts = []
+        def approve(prompt):
+            prompts.append(prompt)
+            return ""
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \
+             patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):
+            self.assertEqual(central_update.command([], root=self.root, confirm=approve), 0)
+            self.assertEqual(central_update.command([], root=self.root, confirm=approve), 0)
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("[default: Yes]", prompts[0])
+        self.assertFalse((self.root / ".agentic").exists())
+        self.assertEqual((central / "local/PROJECT_CONTEXT.md").read_text(), "History and decisions\n")
+        self.assertEqual((central / "migration-backups/legacy-agentic/config.json").read_bytes(), self.settings_bytes)
+
+    def test_update_migration_decline_preserves_legacy(self):
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \
+             patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):
+            self.assertEqual(central_update.command([], root=self.root, confirm=lambda _: "n"), 0)
+        self.assertTrue(self.context.is_file())
+        self.assertFalse((self.root / ".gaston").exists())
 
     def test_explicit_migration_preserves_history_and_application(self):
         result = self.dev("MIGRATE GASTON\n", "migrate")
