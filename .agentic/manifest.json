@@ -53,7 +53,7 @@
     ".agentic/test_launcher.py": "b0c76887949816aef738ab325c253907e0adc0e1d6480e6ba03b43d40a64581e",
     ".agentic/test_lead_autonomy.py": "4396b322b7715883eedd5698451ee3ff25310b6a645791310185e7d81a70c700",
     ".agentic/test_lead_workspace.py": "8a253a70262a45425bb1676095c03408bc2f34a5b1f7ed37b7f85abd8565b624",
-    ".agentic/test_native_cross_platform.py": "349000a4b65a584d7b0b84a04cc5c80260d17fa18c55770a296c6648ef646628",
+    ".agentic/test_native_cross_platform.py": "105b7c75f4ec96d310b84a1440c84f146137633649c0d0182eb42dccabac83e4",
     ".agentic/test_project_continuity.py": "6692932d431441ae181021244a8f34b2baaa5024468394b49146992ee8ffef30",
     ".agentic/test_release_integrity.py": "6c3d8f69fb3fb3f92dede0f92fe13256e6ed450d5589c7315b465a249ada1282",
     ".agentic/test_runtime_recovery.py": "a990ff1d1968dfabfa35e6b79d08315b7034f1cee5b1a2fa3a6e3d8b436e9072",
