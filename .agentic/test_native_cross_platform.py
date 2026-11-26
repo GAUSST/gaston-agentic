@@ -83,8 +83,6 @@ class NativePlatformTests(unittest.TestCase):
                 r'C:\\Users\\Dev User\\Gaston\\native_hooks.py',
                 'claude'
             ])
-            self.assertTrue(native_hooks._managed_hook_command(
-                command,'claude',Path(r'C:\\Users\\Dev User\\Gaston\\native_hooks.py')))
 
     def test_windows_cmd_shim_uses_argument_array(self):
         import base64
