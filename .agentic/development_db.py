@@ -62,10 +62,7 @@ def migrate_legacy_credentials(root):
         raise ValueError('Refusing linked or invalid legacy development DB directory')
     if not (root/'.gaston/project.json').is_file():
         return False
-    if os.name=='nt':
-        from platform_compat import protect_private_path
-        protect_private_path(legacy)
-    elif legacy.stat().st_uid!=os.getuid() or legacy.stat().st_mode&0o077:
+    if os.name!='nt' and (legacy.stat().st_uid!=os.getuid() or legacy.stat().st_mode&0o077):
         raise ValueError('Legacy development DB directory is not private; inspect before migration')
     source_fingerprint=_tree_fingerprint(legacy)
     folder=private_dir(root)
@@ -80,9 +77,6 @@ def migrate_legacy_credentials(root):
     if source.exists() or source.is_symlink():
         if source.is_symlink() or not source.is_file():
             raise ValueError('Refusing linked or invalid legacy development credentials')
-        if os.name=='nt':
-            from platform_compat import protect_private_path
-            protect_private_path(source)
         if os.name!='nt' and (source.stat().st_uid!=os.getuid() or source.stat().st_mode&0o077):
             raise ValueError('Legacy development credentials are not private; inspect before migration')
         if destination.is_symlink():
@@ -101,6 +95,9 @@ def migrate_legacy_credentials(root):
             if hashlib.sha256(source.read_bytes()).digest()!=hashlib.sha256(destination.read_bytes()).digest():
                 destination.unlink(missing_ok=True)
                 raise ValueError('Development credential migration checksum mismatch')
+        if os.name=='nt':
+            from platform_compat import protect_private_path
+            protect_private_path(destination)
     backup=folder/'migration-backups'/'gaston-dev-db'
     if backup.exists() or backup.is_symlink():
         if _tree_fingerprint(backup)!=source_fingerprint:
@@ -111,6 +108,9 @@ def migrate_legacy_credentials(root):
         if _tree_fingerprint(backup)!=source_fingerprint:
             shutil.rmtree(backup)
             raise ValueError('Development DB backup checksum mismatch')
+    if os.name=='nt':
+        from platform_compat import protect_private_path
+        protect_private_path(backup)
     shutil.rmtree(legacy)
     return True
 
@@ -119,7 +119,7 @@ def credentials(root, *, create=False):
     root=Path(root).resolve()
     migrate_legacy_credentials(root)
     folder=private_dir(root); path=folder/'credentials.json'
-    if create:folder.mkdir(mode=0o700,exist_ok=True)
+    if create:folder.mkdir(mode=0o700,parents=True,exist_ok=True)
     if not folder.exists():return None
     if os.name=='nt':
         from platform_compat import protect_private_path

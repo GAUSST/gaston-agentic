@@ -117,8 +117,8 @@ class QuotaTests(unittest.TestCase):
 class PersistentDatabaseTests(unittest.TestCase):
     def test_fixture_credentials_private_and_workspace_bound(self):
         with tempfile.TemporaryDirectory() as td:
-            root=Path(td);c=db.credentials(root,create=True);self.assertEqual(c,db.credentials(root));self.assertNotEqual(c['development_password'],c['readonly_password']);self.assertEqual((root/'.gaston-dev-db/credentials.json').stat().st_mode&0o777,0o600)
-            (root/'.gaston-dev-db/credentials.json').chmod(0o644)
+            root=Path(td);c=db.credentials(root,create=True);self.assertEqual(c,db.credentials(root));self.assertNotEqual(c['development_password'],c['readonly_password']);self.assertEqual((root/'.gaston/local/dev-db/credentials.json').stat().st_mode&0o777,0o600)
+            (root/'.gaston/local/dev-db/credentials.json').chmod(0o644)
             with self.assertRaises(ValueError):db.credentials(root)
 
     def test_owned_container_must_be_labelled_loopback_volume(self):
