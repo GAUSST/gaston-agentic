@@ -362,8 +362,8 @@ class NativePlatformTests(unittest.TestCase):
                     timer.cancel()
                     timer.join()
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows named-job interrupted verification')
-    def test_interrupted_flutter_reservation_recovers_only_after_owned_job_gone(self):
+    @unittest.skipUnless(os.name == 'nt', 'Windows interrupted verification')
+    def test_interrupted_flutter_reservation_requires_positive_cleanup_receipt(self):
         import json
         import time
         import verification_coordination as coordination
@@ -377,46 +377,73 @@ from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import verification_coordination as c
 import platform_compat as p
+import verification_mcp as vm
 root = Path(sys.argv[2])
+mode = sys.argv[3]
+vm.ROOT = root
 marker = str(root / 'running.json')
 child = 'import json,os,time; from pathlib import Path; Path(' + repr(marker) + ').write_text(json.dumps(os.getpid())); time.sleep(90)'
 with c.reserve(root, 'flutter_analyze', '.', task_id='flutter-interrupted') as r:
-    p.run_verification_process([sys._base_executable, '-I', '-c', child], cwd=root, timeout=90, job_name=r['windows_job'])
+    token = vm._VERIFICATION_JOB.set(r['windows_job'])
+    try:
+        if mode == 'crash':
+            vm.execute([sys._base_executable, '-I', '-c', child], cwd=root, timeout=90)
+        else:
+            result = vm.execute([sys._base_executable, '-I', '-c', 'pass'], cwd=root, timeout=15)
+            assert result['exit_code'] == 0 and result['owned_processes_terminated']
+            Path(marker).write_text('0')
+            import time; time.sleep(90)
+    finally:
+        vm._VERIFICATION_JOB.reset(token)
 """
-            proc = subprocess.Popen([sys._base_executable, '-I', '-c', code,
-                                     str(ROOT / '.agentic'), str(root)],
-                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            child_pid = None
-            try:
-                deadline = time.monotonic() + 20
-                while time.monotonic() < deadline and not marker.is_file():
-                    if proc.poll() is not None:break
-                    time.sleep(.05)
-                self.assertTrue(marker.is_file(), 'Native verification did not start')
-                child_pid = json.loads(marker.read_text())
-                row = coordination.active(root)
-                self.assertEqual(row['owner_state'], 'live')
-                self.assertFalse(pc.windows_verification_job_gone(row['windows_job']))
-                self.assertFalse(coordination.recover_proven_interruption(root))
-                proc.kill()
-                proc.wait(timeout=10)
-                deadline = time.monotonic() + 10
-                while time.monotonic() < deadline and not pc.windows_verification_job_gone(row['windows_job']):
-                    time.sleep(.05)
-                self.assertTrue(pc.windows_verification_job_gone(row['windows_job']))
-                self.assertEqual(pc.process_status(child_pid), 'dead')
-                self.assertTrue(coordination.recover_proven_interruption(root))
-                self.assertIsNone(coordination.active(root))
-                archived = list((project_state(root)/'local/interrupted-verifications').glob('*.json'))
-                self.assertEqual(len(archived), 1)
-                self.assertEqual(json.loads(archived[0].read_text())['outcome'], 'interrupted_no_acceptance')
-                with coordination.reserve(root,'flutter_tests','.') as r:
-                    self.assertIn('windows_job',r)
-                self.assertIsNone(coordination.active(root))
-            finally:
-                if proc.poll() is None:
-                    proc.kill()
-                proc.wait(timeout=10)
+            for mode in ('crash','confirmed'):
+                with self.subTest(mode=mode):
+                    marker.unlink(missing_ok=True)
+                    proc = subprocess.Popen([sys._base_executable, '-I', '-c', code,
+                                             str(ROOT / '.agentic'), str(root), mode],
+                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    try:
+                        deadline = time.monotonic() + 20
+                        while time.monotonic() < deadline:
+                            if marker.is_file() and marker.stat().st_size:
+                                break
+                            if proc.poll() is not None:
+                                break
+                            time.sleep(.05)
+                        self.assertTrue(marker.is_file(), 'Native verification did not start')
+                        child_pid = json.loads(marker.read_text())
+                        row = coordination.active(root)
+                        self.assertEqual(row['owner_state'], 'live')
+                        self.assertEqual(row['windows_cleanup'], 'running' if mode=='crash' else 'confirmed')
+                        self.assertFalse(coordination.recover_proven_interruption(root))
+                        proc.kill()
+                        proc.wait(timeout=10)
+                        deadline = time.monotonic() + 10
+                        while time.monotonic() < deadline and not pc.windows_verification_job_gone(row['windows_job']):
+                            time.sleep(.05)
+                        self.assertTrue(pc.windows_verification_job_gone(row['windows_job']))
+                        if mode == 'crash':
+                            # Even if the name is gone, a hard-killed owner
+                            # cannot attest that the process tree drained.
+                            self.assertFalse(coordination.recover_proven_interruption(root))
+                            self.assertIsNotNone(coordination.active(root))
+                            while time.monotonic() < deadline and pc.process_status(child_pid) != 'dead':
+                                time.sleep(.05)
+                            self.assertEqual(pc.process_status(child_pid), 'dead')
+                            coordination.recover_reservation(root, developer_confirmed=True)
+                        else:
+                            self.assertTrue(coordination.recover_proven_interruption(root))
+                        self.assertIsNone(coordination.active(root))
+                    finally:
+                        if proc.poll() is None:
+                            proc.kill()
+                        proc.wait(timeout=10)
+            archived = list((project_state(root)/'local/interrupted-verifications').glob('*.json'))
+            self.assertEqual(len(archived), 2)
+            self.assertTrue(all(json.loads(p.read_text())['outcome']=='interrupted_no_acceptance' for p in archived))
+            with coordination.reserve(root,'flutter_tests','.') as r:
+                self.assertEqual(r['windows_cleanup'],'not_started')
+            self.assertIsNone(coordination.active(root))
 
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
