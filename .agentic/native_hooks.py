@@ -406,14 +406,29 @@ def command_line():
 
 
 def _hook_command_args(command: str, provider: str) -> list[str]:
-    """Parse a hook using the shell grammar of the provider that executes it."""
+    """Parse current Git-Bash hooks and legacy native-Windows Claude hook commands.
+
+    Claude Code executes command hooks through Git Bash on Windows. Releases
+    before the MSYS-path fix wrote native Windows paths; POSIX shlex consumes
+    their backslashes and makes old hooks impossible to identify during repair.
+    Preserve Windows separators while parsing old commands, while still
+    accepting the quoted /c/... form used by current releases.
+    """
     from platform_compat import parse_command, msys_to_windows_path
     if os.name == 'nt' and provider == 'claude':
-        args = shlex.split(command)
+        args = shlex.split(command, posix=False)
+        args = [
+            value[1:-1] if len(value) >= 2 and value[0] == value[-1]
+            and value[0] in ("'", '"') else value
+            for value in args
+        ]
     else:
         args = parse_command(command)
     if os.name == 'nt' and provider == 'claude' and len(args) == 3:
-        args = [msys_to_windows_path(value) if value.startswith('/') else value for value in args]
+        args = [
+            msys_to_windows_path(value) if re.match(r'^/[A-Za-z]/', value) or value.startswith('//') else value
+            for value in args
+        ]
     return args
 
 
