@@ -6,6 +6,8 @@ Run `dev update` from anywhere. It always updates the globally installed Gaston 
 
 When invoked inside a central project, `dev update` also refreshes only recognized Gaston hook commands in `.claude/settings.local.json` and `.codex/hooks.json` so they target the active engine. Unrelated provider hooks and trust records are preserved. The updater does not scan project state or recursively inspect project folders. It reads only the central project marker and provider hook settings needed for that refresh. It never moves, migrates, archives, overwrites or deletes project files or folders. Existing `.agentic/` and `.gaston/` contents remain untouched. Running the command outside a project updates only the global engine. `dev update --rollback` restores a recorded previous version and refreshes managed hooks to that version. `dev migrate` is disabled. An ordinary Gaston launch never installs an update automatically. Explicit legacy mode retains its own updater and publisher trust configuration.
 
+On Windows, a Python certificate-chain verification failure is retried using the operating system's own curl.exe with native certificate verification, a bounded HTTPS request and explicit GitHub-only redirects. This does not require pip or truststore. Certificate checks and the signed release/manifest verification remain mandatory. Existing versions without this transport fallback may require a one-time verified bootstrap update before the normal command can use it.
+
 ## Maintainer release process
 
 1. Merge a release PR only after CI passes on the exact PR head commit.

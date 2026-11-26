@@ -97,6 +97,85 @@ class NativePlatformTests(unittest.TestCase):
             self.assertEqual(task_runtime.worker_ownership(state, worker, launch),
                              ('live', True))
 
+    def test_windows_certificate_error_retries_with_native_transport_only(self):
+        import ssl
+        from urllib.error import URLError
+        import updater
+        url = 'https://api.github.com/repos/publisher/gaston/releases/latest'
+        error = URLError(ssl.SSLCertVerificationError(1, 'issuer unavailable'))
+        with patch.object(updater, 'urlopen', side_effect=error), \
+             patch.object(updater, '_download_windows_native', return_value=b'ok') as native:
+            with patch.object(updater.os, 'name', 'nt'):
+                self.assertEqual(updater._download(url, 16), b'ok')
+            native.assert_called_once_with(url, 16)
+            native.reset_mock()
+            with patch.object(updater.os, 'name', 'posix'):
+                with self.assertRaises(updater.UpdateError):
+                    updater._download(url, 16)
+            native.assert_not_called()
+        with patch.object(updater, 'urlopen', side_effect=URLError('offline')), \
+             patch.object(updater, '_download_windows_native') as native:
+            with patch.object(updater.os, 'name', 'nt'):
+                with self.assertRaises(updater.UpdateError):
+                    updater._download(url, 16)
+            native.assert_not_called()
+
+    def test_windows_native_transport_validates_redirects_and_limits(self):
+        import updater
+        from types import SimpleNamespace
+        url = 'https://api.github.com/repos/publisher/gaston/zipball/abc'
+        redirect = 'https://codeload.github.com/publisher/gaston/legacy.zip/abc'
+        calls = []
+        def run(args, **kwargs):
+            calls.append(args)
+            self.assertEqual(args[1], '--disable')
+            self.assertIn('--max-filesize', args)
+            self.assertIn('=https', args)
+            self.assertNotIn('--insecure', args)
+            self.assertNotIn('--location', args)
+            self.assertNotIn('--cacert', args)
+            self.assertNotIn('CURL_CA_BUNDLE', kwargs['env'])
+            body = Path(args[args.index('--output') + 1])
+            if args[-1] == url:
+                body.write_bytes(b'')
+                return SimpleNamespace(returncode=0, stdout=('302\n' + redirect).encode())
+            self.assertEqual(args[-1], redirect)
+            body.write_bytes(b'archive')
+            return SimpleNamespace(returncode=0, stdout=b'200\n')
+
+        with patch.object(updater, '_windows_system_curl', return_value=Path('system-curl.exe')), \
+             patch.object(updater.subprocess, 'run', side_effect=run), \
+             patch.dict(os.environ, {'CURL_CA_BUNDLE': 'untrusted.pem'}):
+            self.assertEqual(updater._download_windows_native(url, 20), b'archive')
+            self.assertEqual(len(calls), 2)
+            calls.clear()
+            redirect = 'https://evil.example/archive'
+            with self.assertRaises(updater.UpdateError):
+                updater._download_windows_native(url, 20)
+            self.assertEqual(len(calls), 1)
+            redirect = 'http://codeload.github.com/archive'
+            with self.assertRaises(updater.UpdateError):
+                updater._download_windows_native(url, 20)
+            redirect = 'https://codeload.github.com/publisher/gaston/legacy.zip/abc'
+            with self.assertRaisesRegex(updater.UpdateError, 'size limit'):
+                updater._download_windows_native(url, 3)
+        with patch.object(updater, '_windows_system_curl', return_value=Path('system-curl.exe')), \
+             patch.object(updater.subprocess, 'run',
+                          return_value=SimpleNamespace(returncode=60, stdout=b'')) as run:
+            with self.assertRaisesRegex(updater.UpdateError, 'curl exit 60'):
+                updater._download_windows_native(url, 20)
+            self.assertEqual(run.call_count, 1)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows system HTTPS executable')
+    def test_windows_system_curl_is_native_tls_client(self):
+        import updater
+        curl = updater._windows_system_curl()
+        self.assertTrue(curl.is_absolute())
+        result = subprocess.run([str(curl), '--disable', '--version'],
+                                capture_output=True, text=True, timeout=10, check=True)
+        self.assertIn('Schannel', result.stdout)
+        self.assertIn('https', result.stdout.lower())
+
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
