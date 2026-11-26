@@ -108,9 +108,8 @@ def migrate_legacy_credentials(root):
         if _tree_fingerprint(backup)!=source_fingerprint:
             shutil.rmtree(backup)
             raise ValueError('Development DB backup checksum mismatch')
-    if os.name=='nt':
-        from platform_compat import protect_private_path
-        protect_private_path(backup)
+    # The parent dev-db directory already has a protected inheritable ACL.
+    # Do not reset ACLs on the copied backup tree; preserve owner access.
     shutil.rmtree(legacy)
     return True
 
