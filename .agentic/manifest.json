@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.15",
+  "release": "v1.6.16",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
@@ -98,8 +98,8 @@
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
-    "gaston_cli.py": "2ec6bb2cfa581d22e5abcf13d29b4a9b1408402c1dbc9ed351fc8c2384be3d6e",
-    "pyproject.toml": "c09f4343f6f466de3cf3acda73c5f8cdd32e6fc331c88cfd7889cbe847c9e4bc",
+    "gaston_cli.py": "adff8c68b36394e9522b5626fbeb768ca23a2737654a4f97f1a6bbe0d5261ff3",
+    "pyproject.toml": "5b3330a49ffb396cfef33b35b35e00582e1c5458bf2c43634d558a0b131bcf05",
     ".agentic/updater.py": "80c4050b8d18e959f5f8dc8c14a851f788c101306a0434a66b1da8595c6404df",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
@@ -109,7 +109,7 @@
     ".agentic/project_layout.py": "41e6309276b554589519e5f7eedc6a5f68aca665cac9fa9b2307813799c95bd0",
     ".agentic/test_project_layout.py": "112815115d12d66de5833a4a2f73c8c0ada7adc99601cd323be7d79655f30edc",
     ".agentic/__init__.py": "580783cdb23f64de5579d7da91c6e6ff454d54be54d7dadf3eb5990f342e9e23",
-    ".agentic/test_central_dispatch.py": "b3541202f9de4bc4dab54c2062796e0bd0120ebc88bf4ca248fd89407a3f3505",
+    ".agentic/test_central_dispatch.py": "5a311d8c03775fb30eedffbc4745ec69b91ebeb4c963f5b1afac436596068963",
     ".agentic/test_central_init.py": "4633d94fdd84c2f49779f33955a8791d4434bf2c47f3cb25cb694008d45c61a0",
     ".agentic/central_uninstall.py": "dd9068a3593b51c900d7625a090d960dc79781cf17bdbdfec9e98383aeb35607",
     ".agentic/test_central_uninstall.py": "583c760b470000494d155d2d318924e5f29ecda9c0b3da1aca5dc80659bc4e5a",
@@ -132,5 +132,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.6.15"
+  "build": "1.6.16"
 }

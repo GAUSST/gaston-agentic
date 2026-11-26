@@ -111,6 +111,14 @@ class CentralDispatchTests(unittest.TestCase):
             self.assertEqual(gaston_cli.main(), 0)
             update.assert_called_once_with([], None)
 
+    def test_global_update_outside_project_does_not_treat_cwd_as_project_root(self):
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop('GASTON_ROOT', None)
+            with patch.object(gaston_cli, '_central_module') as load:
+                load.return_value.main.return_value = 0
+                self.assertEqual(gaston_cli._global_update([], root=None), 0)
+                load.assert_called_once_with('central_update', None)
+
     def test_uninitialized_project_not_auto_initialized(self):
         (self.project / '.agentic/launcher.py').unlink()
         result = self.cli('--help')

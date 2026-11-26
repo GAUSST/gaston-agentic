@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "gaston-agentic-cli"
-version = "1.6.15"
+version = "1.6.16"
 description = "Gaston native engineering CLI for source-free Gaston projects"
 requires-python = ">=3.10"
 dependencies = ["psutil>=5.9; sys_platform == 'win32' or sys_platform == 'darwin'"]
