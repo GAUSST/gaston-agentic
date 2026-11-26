@@ -75,6 +75,43 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertEqual((central / "local/PROJECT_CONTEXT.md").read_text(), "History and decisions\n")
         self.assertEqual((central / "migration-backups/legacy-agentic/config.json").read_bytes(), self.settings_bytes)
 
+    def test_new_release_and_project_migration_share_single_confirmation(self):
+        from test_central_update import candidate
+        manifest, payload = candidate()
+        prompts = []
+        def approve(prompt):
+            prompts.append(prompt)
+            return ""
+        folder = self.root / "global"
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(folder)}), \
+             patch("updater.latest", return_value={"tag":"v7.8.9"}), \
+             patch("updater.signed_release_commit", return_value="a"*40), \
+             patch("updater._download", return_value=b"archive"), \
+             patch("updater._validate_candidate", return_value=(manifest,payload)):
+            self.assertEqual(central_update.command([], root=self.root, confirm=approve), 0)
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("[default: Yes]", prompts[0])
+        self.assertEqual(central_update.active_path(folder), folder / "versions/v7.8.9")
+        self.assertFalse((self.root / ".agentic").exists())
+        self.assertEqual((self.root / ".gaston/local/PROJECT_CONTEXT.md").read_text(), "History and decisions\n")
+        self.assertEqual((self.root / ".gaston/migration-backups/legacy-agentic/config.json").read_bytes(), self.settings_bytes)
+
+    def test_update_conflict_never_checks_publisher_or_prompts(self):
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema":1, "kind":"gaston-project", "engine":"gaston-agentic-cli",
+            "created_with":"1.6.12"
+        }), encoding="utf-8")
+        (central / "config.json").write_text('{"central":"keep"}', encoding="utf-8")
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \
+             patch("updater.latest") as latest:
+            with self.assertRaisesRegex(RuntimeError, "Conflicting project state"):
+                central_update.command([], root=self.root, confirm=lambda _: self.fail("unexpected prompt"))
+            latest.assert_not_called()
+        self.assertTrue(self.context.is_file())
+        self.assertEqual((central / "config.json").read_text(), '{"central":"keep"}')
+
     def test_update_migration_decline_preserves_legacy(self):
         with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \
              patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):

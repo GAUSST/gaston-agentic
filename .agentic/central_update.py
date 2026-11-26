@@ -227,21 +227,24 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
     from updater import _validate_candidate, MAX_ARCHIVE, version
     from setup_wizard import yesno
     from central_migration import migrate, needs_migration
-    release = latest(OFFICIAL_REPOSITORY)
-    tag = release["tag"]
-    newer = version(tag) > version(current)
     pending = root is not None and needs_migration(root)
-    if newer:
-        output("Gaston update available: " + current + " → " + tag)
-        commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
-        archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
-        manifest, payload = _validate_candidate(archive, tag)
-    else:
-        output("Gaston is current: " + current)
-    if not newer and not pending:
-        return 0
 
     def approve():
+        # For a pending project, migration invokes this only after checking
+        # ownership, active sessions and merge conflicts. Invalid workspaces
+        # never contact the publisher or change the global engine.
+        release = latest(OFFICIAL_REPOSITORY)
+        tag = release["tag"]
+        newer = version(tag) > version(current)
+        if newer:
+            output("Gaston update available: " + current + " → " + tag)
+            commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
+            archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
+            manifest, payload = _validate_candidate(archive, tag)
+        else:
+            output("Gaston is current: " + current)
+            if not pending:
+                return False
         question = ("Install verified update and consolidate project?" if newer and pending
                     else "Consolidate legacy Gaston project?" if pending
                     else "Install verified Gaston update?")
@@ -250,7 +253,8 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
         except EOFError:
             accepted = False
         if not accepted:
-            output("Update cancelled; no changes made.")
+            if not pending:
+                output("Update cancelled; no changes made.")
             return False
         if newer:
             stage_verified_release(folder, tag, payload, manifest)
