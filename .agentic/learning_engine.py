@@ -1,6 +1,8 @@
 """Evidence-based local learning and code-health candidates; no extra AI calls."""
 from __future__ import annotations
-from project_layout import project_state, project_state_name, project_root
+from project_layout import project_state, project_state_name, project_root, central_mode
+from contextlib import contextmanager
+from platform_compat import file_lock
 import ast
 import hashlib
 import os
@@ -28,10 +30,26 @@ RULES={
 }
 
 
+def _learning_store(root):
+    if not central_mode(): return evo.store(root)
+    path=evo.safe(root,project_state_name()+'/local/learning')
+    path.mkdir(parents=True,exist_ok=True,mode=0o700)
+    return path
+
+
+@contextmanager
+def _learning_locked(root):
+    if not central_mode():
+        with evo.locked(root): yield
+        return
+    _learning_store(root)
+    with file_lock(evo.safe(root,project_state_name()+'/local/learning/operations.lock')): yield
+
+
 def collect(root, *, limit=100):
     """Stable one-record-per-task evidence, no raw logs/goals/secret contents stored."""
-    root=Path(root); base=evo.store(root); path=base/'observations.json'
-    with evo.locked(root):
+    root=Path(root); base=_learning_store(root); path=base/'observations.json'
+    with _learning_locked(root):
         old=read_record(path);obs=old.get('tasks',{}) if isinstance(old.get('tasks'),dict) else {}
         folders=[f for f in (project_state(root)/'runs').glob('*') if re.fullmatch(r'[a-z0-9-]{8,120}',f.name) and not f.is_symlink() and f.is_dir() and (f/'state.json').is_file()]
         folders.sort(key=lambda p:(p/'state.json').stat().st_mtime,reverse=True)
@@ -74,6 +92,7 @@ def lesson(root, *, trigger, cause, prevention, evidence, scope='project', candi
     if scope not in ('project','toolkit') or not all(isinstance(s,str) and s.strip() for s in (trigger,cause,prevention,evidence)):
         raise ValueError('Specify trigger, root cause, concrete prevention, evidence and scope')
     if scope=='toolkit':
+        if central_mode():raise ValueError('Toolkit lessons are disabled in central mode; use signed releases')
         if not candidate_id:raise ValueError('Toolkit lesson needs a validated evolution candidate')
         rec=evo.read(evo.entry(root,candidate_id)/'record.json')
         if rec['state'] not in ('validated','applied') or not rec.get('validation'):raise ValueError('Candidate must pass validation')
@@ -84,15 +103,15 @@ def lesson(root, *, trigger, cause, prevention, evidence, scope='project', candi
         if state.get('stage')!='ready_for_human_release_review' or not state.get('lead_verified'):raise ValueError('Task has no final acceptance record')
         anchor=evidence
     key=hashlib.sha256((' '.join(cause.lower().split())+'\n'+' '.join(prevention.lower().split())+'\n'+scope).encode()).hexdigest()[:20]
-    with evo.locked(root):
-        p=evo.store(root)/'lessons.json';data=read_record(p);items=data.get('lessons',{})
+    with _learning_locked(root):
+        p=_learning_store(root)/'lessons.json';data=read_record(p);items=data.get('lessons',{})
         row=items.get(key,{'id':key,'scope':scope,'trigger':trigger,'root_cause':cause,'prevention':prevention,'evidence_ids':[],'created_at':time.time()})
         row['evidence_ids']=sorted(set(row['evidence_ids'])|{anchor});items[key]=row;evo.put(p,{'version':1,'lessons':items})
     return {'status':'ready','lesson_id':key,'scope':scope,'evidence_ids':row['evidence_ids'],'note':'Local lesson, not an automatic permission or policy change. Do not store secrets or private contents; no automatic sharing.'}
 
 
 def context(root):
-    p=evo.store(root);obs=read_record(p/'observations.json').get('tasks',{});lessons=read_record(p/'lessons.json').get('lessons',{})
+    p=_learning_store(root);obs=read_record(p/'observations.json').get('tasks',{});lessons=read_record(p/'lessons.json').get('lessons',{})
     counts=Counter(s for x in obs.values() for s in x.get('signals',[]))
     # Deterministically compact, no source code or raw transcripts. Lessons are
     # evidence notes, not instructions overriding developer policy.
@@ -110,7 +129,7 @@ def health(root, relative_path=None, max_files=300):
     """Conservative static hints, not proof of dead code. Python AST + Java private methods."""
     root=Path(root).resolve()
     if relative_path is None:
-        relative_path=project_state_name()
+        relative_path='.' if central_mode() else project_state_name()
     target=root if relative_path=='.' else evo.safe(root,relative_path)
     if not target.exists():raise ValueError('Unknown code health path')
     if any(p in {'local','runs','tasks','.git','.env'} or p.startswith('.env') for p in Path(relative_path).parts):raise ValueError('Private/generated path')

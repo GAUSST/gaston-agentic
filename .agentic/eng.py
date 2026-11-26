@@ -528,9 +528,11 @@ def lead_safe_mcp_permission_rules() -> list[str]:
     uses comma-separated built-in names. Treating both flags the same can leave
     intended MCP permissions ineffective even though the server is configured.
     """
-    from verification_mcp import TOOLS
+    from verification_mcp import TOOLS, CENTRAL_DISABLED_TOOLS
+    excluded={'git_commit','workspace_preview','workspace_housekeeping','workspace_document','validate_evolution','export_toolkit','recover_verification_reservation'}
+    if central_mode():excluded.update(CENTRAL_DISABLED_TOOLS)
     approved = ['mcp__gaston_verify__' + tool['name'] for tool in TOOLS
-                if tool['name'] not in ('git_commit','workspace_preview','workspace_housekeeping','workspace_document','validate_evolution','export_toolkit','recover_verification_reservation')]
+                if tool['name'] not in excluded]
     # Unknown native tools and MCPs keep Claude's own permissions; do not
     # preapprove broad shell patterns when the old syntactic guard is removed.
     approved += ['Bash(pwd)']
@@ -582,8 +584,14 @@ def lead_runtime_brief() -> str:
     else:
         state = ('Detected Git repositories: ' + ', '.join(names[:20])) if names else (
             'No Git roots detected by the startup scan; run git_inspect before concluding no repository exists')
+    if central_mode():
+        repair_guidance='Preserve incidents and report engine defects for correction through a verified signed release; do not stage project-local toolkit changes. '
+        evolution_guidance='Central engine is immutable; use signed releases and `dev update`, not project-local evolution. '
+    else:
+        repair_guidance='Use stage_evolution with incident_id and verify the candidate. '
+        evolution_guidance='Stage, review, validate and queue reproducible toolkit fixes for idle startup. '
     return ('Gaston Lead runtime capabilities: mcp__gaston_verify__git_inspect and '
-            'workspace_overview are available through the project-local MCP. '
+            'workspace_overview are available through the project-scoped MCP. '
             'Native shell (Bash in Claude), research, planning, plugins and connected MCP tools use provider-native permissions; '
             'no Gaston allowlist blocks unfamiliar capabilities. Use them directly for non-coding work. '
             'Use the scoped Git commit tool only on explicit user request; obtain specific authorization before sensitive actions. '
@@ -595,8 +603,8 @@ def lead_runtime_brief() -> str:
             'For service-level changes, the Lead writes or configures a project-owned gaston-e2e.json and isolated test launcher with real HTTP contracts; delegate only complex implementation-dependent fixtures if genuinely necessary. Run task-linked backend and managed application API checks; finalize only when required gates pass for the current revision. Never substitute smoke fixtures or JUnit for live API evidence. Read every changed and relevant document in full, including API contracts, decision records and UML deviations, and compare with the implementation and original requirements. Resolve material code or documentation gaps in this same task before acceptance; record genuine non-blocking deferrals with reasons, owner and checkpoint; obtain approval before accepting material residual risk. Re-read corrections and record exact-path reviews with current evidence. Reuse recorded current passes. Never ask the developer for manual Git output '
             'without attempting available tools. '
             'Engineering quality first: prefer a robust, well-reasoned system architecture over the shortest or quickest implementation. For substantial changes, inspect module boundaries, domain models, data flow, contracts, dependencies, failure modes and integration points; compare viable approaches and document consequential tradeoffs. Respect existing project architecture and choose only complexity justified by real requirements, not decorative abstraction. Explain why and invariants near cryptography, concurrency, transactions, finance, retries and difficult algorithms; avoid comments that restate code. Before slice or final acceptance use task_code_review and record_code_review for each changed source/test, including deletion effects. Fix material findings and reread changed code; no comment-count or complexity quotas. Use code_health advisory hints when useful, no extra model or full scan by default. '
-            'Runtime recovery: native stale lock and abandoned task reconciliation run automatically; call resume_builder for an interrupted resumable task, preserving its task ID, revision and correction count. If a tool reports repair_incident, investigate it directly before blind retries, use stage_evolution with incident_id and verify the candidate. Do not delete guard files or edit task state manually; preserve unknown or active owners. ' 
-            'Continuous improvement: inspect learning_report after significant failures and acceptance; record verified reusable lessons; use code_health for concrete candidates, never automatic deletion. For reproducible toolkit defects, use stage_evolution with exact hashes, source_reviews for edited code and regression_test, and a new regression, validate_evolution, then queue_evolution for idle startup; sensitive runtime/policy changes require developer confirmation. Never edit live toolkit, protected recovery controller or baseline tests through shell or other tools. Keep private project context local; do not start speculative improvement jobs or extra model calls during active implementation. ' + state + '.')
+            'Runtime recovery: native stale lock and abandoned task reconciliation run automatically; call resume_builder for an interrupted resumable task, preserving its task ID, revision and correction count. If a tool reports repair_incident, investigate it directly before blind retries, ' + repair_guidance + 'Do not delete guard files or edit task state manually; preserve unknown or active owners. ' 
+            'Continuous improvement: inspect learning_report after significant failures and acceptance; record verified reusable lessons; use code_health for concrete candidates, never automatic deletion. ' + evolution_guidance + 'Never edit live toolkit, protected recovery controller or baseline tests through shell or other tools. Keep private project context local; do not start speculative improvement jobs or extra model calls during active implementation. ' + state + '.')
 
 
 def lead_safe_mcp_permissions() -> str:
@@ -1599,8 +1607,10 @@ def ensure_local_context():
             lines += ['## Outstanding toolkit repair incidents', json.dumps([{'incident_id': x['incident_id'], 'operation': x['operation'], 'status': x['status']} for x in pending]), '']
     except (OSError,ValueError,TypeError,KeyError) as exc:
         lines += ['Local learning unavailable: '+type(exc).__name__, '']
-    if (LOCAL/'lead-checkpoint.json').is_file():
-        lines += ['## Durable Lead checkpoint', 'See '+str((LOCAL/'lead-checkpoint.json').relative_to(ROOT))+' for exact decisions, next steps and referenced task/plan IDs. Reconcile with current source and records.', '']
+    import token_intelligence as ti
+    checkpoint=ti._checkpoint_read_path(ROOT)
+    if checkpoint is not None and checkpoint.is_file():
+        lines += ['## Durable Lead checkpoint', 'See '+str(checkpoint.relative_to(ROOT))+' for exact decisions, next steps and referenced task/plan IDs. Reconcile with current source and records.', '']
     result = LOCAL / 'PROJECT_CONTEXT.md'
     result.write_text('\n'.join(lines)[:18000] + '\n', encoding='utf-8')
     return result
@@ -1852,7 +1862,7 @@ def chat_command(agent: str, handoff_after: bool=True, visual: bool=False, role:
     if central_mode():
         from native_hooks import refresh_central_provider_hooks
         refresh_central_provider_hooks(ROOT)
-    if role=='reviewer' and (LOCAL/'lead-checkpoint.json').is_file():
+    if role=='reviewer' and ti._checkpoint_read_path(ROOT) is not None and ti._checkpoint_read_path(ROOT).is_file():
         with SESSIONS.locked(agent,role):
             if ti.maybe_rotate_lead(ROOT,SESSIONS,agent):print('Archived oversized Lead conversation at a safe checkpoint; continuing from saved project memory.',flush=True)
     existing=SESSIONS.get(agent,role)
