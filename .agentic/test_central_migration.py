@@ -58,7 +58,7 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertEqual((self.root / ".gaston/local/PROJECT_CONTEXT.md").read_text(),
                          "History and decisions\n")
         self.assertEqual((self.root / ".gaston/config.json").read_bytes(),
-                         self.settings.read_bytes())
+                         self.settings_bytes)
         backup = self.root / ".gaston/migration-backups/legacy-agentic"
         self.assertFalse((self.root / ".agentic").exists())
         self.assertEqual((backup / "local/PROJECT_CONTEXT.md").read_text(),

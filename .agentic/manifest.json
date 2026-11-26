@@ -117,7 +117,7 @@
     ".agentic/central_update.py": "150ff51f0c3d2d508846ac5b09a7d1c935034085b23122138952f3fc71477d22",
     ".agentic/central_migration.py": "8a7abb8f858fa25dc3704109ce12f667ea67a512e74364786bc9d82e30f1672a",
     ".agentic/test_central_runtime_acceptance.py": "b3eaac505750537ef9ce91a56a226aae44a12e65e7bae1c6e1bf57123eb225b5",
-    ".agentic/test_central_migration.py": "f95dc7f0aedf48d2b7e7e89abbf7dc7b838a35f49b7671a7435c95b678725823",
+    ".agentic/test_central_migration.py": "247af395eb17e9c6e642fe01593908b3bf33af5c52c8da14d8c541fb202c3844",
     ".agentic/test_central_update.py": "8983cd04c0f5f18bbaaf78573cc38ba959b94eb3cb7f96961cf11922a71c230e",
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
     ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
