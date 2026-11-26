@@ -163,6 +163,45 @@ def _read_manifest(old: Path) -> dict:
     return manifest
 
 
+def _validate_state_only(old: Path) -> None:
+    """Accept residual project data, not unverified toolkit source.
+
+    The caller must first validate the canonical central project marker.
+    An absent manifest is expected for source-free central installations
+    which accumulated legacy runtime state. A present but invalid manifest
+    is never treated as absent.
+    """
+    _assert_tree_safe(old)
+    if not old.is_dir():
+        raise MigrationError("Legacy state is not a directory: " + str(old))
+    for child in old.iterdir():
+        if child.name in ("local", "tasks", "runs") and child.is_dir():
+            continue
+        if child.name in ("config.json", ".gitignore") and child.is_file():
+            continue
+        if child.name == "policies" and child.is_dir() and all(
+                entry.name == "custom" and entry.is_dir()
+                for entry in child.iterdir()):
+            continue
+        raise MigrationError("Unrecognized manifest-free legacy entry; left untouched: " + str(child))
+    for parent, dirs, files in os.walk(old, followlinks=False):
+        for name in files:
+            item = Path(parent) / name
+            if not item.is_file():
+                raise MigrationError("Unsupported legacy state entry: " + str(item))
+
+
+def _validate_unmigrated_central(root: Path) -> None:
+    old = root / ".agentic"
+    manifest = old / "manifest.json"
+    if manifest.exists() or manifest.is_symlink() or (old / "launcher.py").exists():
+        data = _read_manifest(old)
+        if (old / "launcher.py").is_file():
+            _legacy_owned_sources(root, data)
+    else:
+        _validate_state_only(old)
+
+
 def _legacy_owned_sources(root: Path, manifest: dict) -> list[Path]:
     old = root / ".agentic"
     files = manifest.get("files")
@@ -356,11 +395,7 @@ def migrate(root: Path, *, confirmation=input, output=print, approve=None):
         marker = read_project_marker(root)
         already_migrated = marker.get("migrated_from") == "legacy"
         if not already_migrated:
-            manifest = _read_manifest(old)
-            if (old / "launcher.py").is_file():
-                _legacy_owned_sources(root, manifest)
-            # A partially completed prior migration may already have removed
-            # the launcher. Its entire source tree is preserved in the archive.
+            _validate_unmigrated_central(root)
             _check_state_merge(old, target)
     else:
         manifest = _read_manifest(old)
@@ -383,6 +418,7 @@ def migrate(root: Path, *, confirmation=input, output=print, approve=None):
     if target_exists:
         read_project_marker(root)
         if not already_migrated:
+            _validate_unmigrated_central(root)
             _check_state_merge(old, target)
             _merge_state(old, target)
         _ensure_backup_ignore(target)
