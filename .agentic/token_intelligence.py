@@ -234,10 +234,29 @@ def _rotation_blockers(root):
     return blockers
 
 
+def _checkpoint_write_path(root):
+    path=project_state(Path(root).resolve())/'local/lead-checkpoint.json'
+    if any(x.is_symlink() for x in (path.parent.parent,path.parent,path)): return None
+    return path
+
+
+def _checkpoint_read_path(root):
+    path=_checkpoint_write_path(root)
+    if path is None:return None
+    if path.is_file():return path
+    if central_mode():
+        old=Path(root).resolve()/'.agentic/local/lead-checkpoint.json'
+        if any(x.is_symlink() for x in (old.parent.parent,old.parent,old)):return None
+        if old.is_file():return old
+    return path
+
+
 def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task_ids,plan_ids,safe_to_rotate,continue_work=None,stop_reason=None):
     """Durable bounded state, not a transcript or permission override."""
     from orchestration import put,plan_file
-    root=Path(root); local=project_state(root)/'local'
+    root=Path(root); checkpoint_path=_checkpoint_write_path(root)
+    if checkpoint_path is None:raise ValueError('Refusing linked Lead checkpoint path')
+    local=checkpoint_path.parent
     if not isinstance(summary,str) or not summary.strip() or len(summary)>8000:raise ValueError('Provide factual checkpoint summary, at most 8000 characters')
     for label,value in (('decisions',decisions),('next_steps',next_steps),('task_ids',task_ids),('plan_ids',plan_ids)):
         if not isinstance(value,list) or len(value)>30 or not all(isinstance(v,str) and 0<len(v)<=1200 for v in value):raise ValueError('Invalid '+label)
@@ -273,7 +292,7 @@ def record_lead_checkpoint(root,provider,sid,*,summary,decisions,next_steps,task
             'roadmap_sha256':roadmap.get('sha256') if roadmap['status']=='ready' else None,
             'next_milestone_id':roadmap.get('next_milestone_id') if roadmap['status']=='ready' else None,
             'roadmap_paths':roadmap.get('paths') if roadmap['status']=='ready' else None}
-    put(local/'lead-checkpoint.json',record)
+    put(checkpoint_path,record)
     reason = ('Project context not approved: ' + roadmap.get('reason','Select authoritative project documents')) if roadmap['status']!='ready' else None
     return {'status':'ready','rotation_eligible':eligible,'context_tokens':budget.get('context_tokens'),'blocking_tasks':blockers,'roadmap':roadmap,'rotation_blocked_reason':reason,
             'note':'Checkpoint saved; this is not a completion or pause decision. Continue the authorized plan, using provider-native compaction when available. Idle rotation requires approved context, matching SHA256 and no newer user message or active work.'}
@@ -283,7 +302,9 @@ def maybe_rotate_lead(root,store,provider):
     """Called under the idle Lead role lease; preserve the native transcript."""
     from task_runtime import read_record
     from orchestration import put
-    path=project_state(root)/'local/lead-checkpoint.json';record=read_record(path)
+    path=_checkpoint_write_path(root)
+    if path is None:return False
+    source=_checkpoint_read_path(root);record=read_record(source) if source is not None else {}
     existing=store.get(provider,'reviewer')
     if not existing or not record.get('rotation_eligible') or record.get('provider')!=provider or record.get('session_id')!=existing['id']:return False
     if _rotation_blockers(root):return False
@@ -332,10 +353,7 @@ def latest_context(provider,sid,*,path=None):
 def checkpoint_context(root,provider,sid):
     """Restore only the current turn's durable continuation, never old consent."""
     from task_runtime import read_record
-    row=read_record(project_state(root)/'local/lead-checkpoint.json')
-    if not row and project_state(root).name=='.gaston':
-        legacy=Path(root)/'.agentic/local/lead-checkpoint.json'
-        if not legacy.is_symlink() and not legacy.parent.is_symlink():row=read_record(legacy)
+    source=_checkpoint_read_path(root);row=read_record(source) if source is not None else {}
     if row.get('provider')!=provider or row.get('session_id')!=sid:
         return ''
     fingerprint=last_user_fingerprint(provider,sid)

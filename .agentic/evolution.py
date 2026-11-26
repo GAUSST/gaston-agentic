@@ -42,8 +42,14 @@ OBSOLETE_RELEASE_FILES = {
 }
 
 
+def _require_legacy_toolkit():
+    from project_layout import central_mode
+    if central_mode(): raise RuntimeError('Central engine is immutable. Use a verified signed release and `dev update`.')
+
+
 def cleanup_obsolete_release_files(root):
     """Remove only retired exact toolkit copies after an idle overlay upgrade."""
+    _require_legacy_toolkit()
     m = read(safe(root, MANIFEST))
     removed = []
     for rel, hashes in OBSOLETE_RELEASE_FILES.items():
@@ -102,11 +108,13 @@ def safe(root, rel):
 
 
 def store(root):
+    _require_legacy_toolkit()
     p=safe(root,'.agentic/local/evolution'); p.mkdir(parents=True,exist_ok=True,mode=0o700);return p
 
 
 @contextmanager
 def locked(root):
+    _require_legacy_toolkit()
     from platform_compat import file_lock
     p=safe(root,'.agentic/local/evolution/operations.lock')
     with file_lock(p):
@@ -114,6 +122,7 @@ def locked(root):
 
 
 def manifest(root):
+    _require_legacy_toolkit()
     import uninstall
     m=read(safe(root,MANIFEST)); files=m.get('files')
     if not isinstance(files,dict) or not files:raise ValueError('Missing toolkit manifest')
@@ -138,6 +147,7 @@ def rebuild(root,m, *, remove=(), add=()):
 
 
 def entry(root,key):
+    _require_legacy_toolkit()
     if not isinstance(key,str) or not ID.fullmatch(key):raise ValueError('Invalid evolution candidate ID')
     p=safe(root,'.agentic/local/evolution/candidates/'+key)
     if not (p/'record.json').is_file():raise ValueError('Unknown evolution candidate')
@@ -415,6 +425,7 @@ def cancel(root):
 
 
 def idle(root):
+    _require_legacy_toolkit()
     # Reconcile proven abandoned leases; preserve unknown or active owners.
     local=Path(root)/'.agentic/local'
     from session_store import Store

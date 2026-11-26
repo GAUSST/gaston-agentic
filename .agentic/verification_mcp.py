@@ -41,6 +41,10 @@ TOOLKIT_BUILD = _RELEASE_MANIFEST.get('build', TOOLKIT_RELEASE.removeprefix('v')
 MANIFEST_SHA256 = hashlib.sha256(_MANIFEST_BYTES).hexdigest()
 SERVER_PATH = str(Path(__file__).resolve())
 
+CENTRAL_DISABLED_TOOLS = frozenset({'stage_evolution','validate_evolution','evolution_status','queue_evolution','cancel_evolution','export_toolkit'})
+CENTRAL_EVOLUTION_REASON = 'Central engine is immutable; use verified signed releases and `dev update`.'
+
+
 TOOLS = [
     {'name':'workspace_overview','description':'Bounded workspace directory overview or filename search. Claude native Read/Glob/Grep remain available; never accesses private Git internals or secrets.',
      'inputSchema':{'type':'object','properties':{'action':{'type':'string','enum':['overview','find']},'relative_path':{'type':'string'},'pattern':{'type':'string'},'max_results':{'type':'integer','minimum':1,'maximum':150}},'additionalProperties':False}},
@@ -1758,6 +1762,8 @@ def _code_review(action,args):
 
 def _evolution(action,args):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
+    if central_mode() and action in ('stage','validate','status','queue','cancel','export'):
+        return response('blocked',reason=CENTRAL_EVOLUTION_REASON)
     import evolution as evo
     import learning_engine as learning
     if action=='learning':return learning.collect(ROOT)
@@ -1943,7 +1949,9 @@ def handle(request, *, cancel_event=None, progress=None):
         return {'protocolVersion':offered,'capabilities':{'tools':{'listChanged':False}},
                 'serverInfo':{'name':'gaston-verify','version':TOOLKIT_BUILD}}
     if method=='ping':return {}
-    if method=='tools/list':return {'tools':TOOLS}
+    if method=='tools/list':
+        if central_mode():return {'tools':[x for x in TOOLS if x.get('name') not in CENTRAL_DISABLED_TOOLS]}
+        return {'tools':TOOLS}
     if method=='tools/call':
         tool_started=time.monotonic()
         params=request.get('params',{})
@@ -1955,6 +1963,8 @@ def handle(request, *, cancel_event=None, progress=None):
                 out=response('blocked',reason='This MCP instance loaded an outdated toolkit. Close the stale session and reopen ./dev.')
             elif LIVE_SERVER and os.environ.get('GASTON_LEAD_TOKEN') and not _authorized_delegate():
                 out=response('blocked',reason='This MCP instance no longer belongs to the active Engineering Lead.')
+            elif central_mode() and name in CENTRAL_DISABLED_TOOLS:
+                out=response('blocked',reason=CENTRAL_EVOLUTION_REASON)
             elif name=='wait_for_builder' and cancel_event is not None:
                 out=wait_for_builder(args.get('task_id'),args.get('timeout_seconds',BUILDER_WAIT_SECONDS),cancel_event=cancel_event,progress=progress)
             elif name=='run_task_acceptance_check' and cancel_event is not None:
