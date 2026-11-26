@@ -537,8 +537,14 @@ def installed(root: Path) -> bool:
             needed = {'SessionStart', 'SessionEnd', 'Stop'}
             needed.add('PreToolUse')
             for event in needed:
-                if not any(script in str(x.get('command','')) for group in hooks.get(event, [])
-                           for x in group.get('hooks', [])):
+                if not any(
+                    x.get('type') == 'command' and _managed_hook_command(
+                        str(x.get('command','')),
+                        'codex' if name == '.codex/hooks.json' else 'claude',
+                        Path(script))
+                    for group in hooks.get(event, [])
+                    for x in group.get('hooks', [])
+                ):
                     return False
         except (OSError, ValueError, TypeError, AttributeError): return False
     return True
