@@ -7,12 +7,43 @@ from __future__ import annotations
 from project_layout import project_state, project_state_name, project_root
 from contextlib import contextmanager
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+import re
 import signal
 import subprocess
 import time
 
 WINDOWS = os.name == 'nt'
+
+
+def windows_to_msys_path(value: str) -> str:
+    """Convert an absolute Windows path to the POSIX form accepted by Git Bash."""
+    raw = str(value)
+    if raw.startswith('\\\\?\\') or raw.startswith('\\\\.\\'):
+        raw = raw[4:]
+    path = PureWindowsPath(raw)
+    if len(path.drive) == 2 and path.drive[1] == ':' and path.root:
+        tail = '/'.join(path.parts[1:])
+        return '/' + path.drive[0].lower() + '/' + tail
+    if path.drive.startswith('\\\\'):
+        tail = '/'.join(path.parts[1:])
+        share = path.drive.lstrip('\\').replace('\\', '/')
+        return '//' + share + (('/' + tail) if tail else '')
+    raise ValueError('Claude Bash hooks require an absolute drive or UNC Windows path: ' + raw)
+
+
+def msys_to_windows_path(value: str) -> str:
+    """Convert a Git-Bash /<drive>/ path back to a native Windows path."""
+    raw = str(value)
+    match = re.fullmatch(r'/([A-Za-z])(?:/(.*))?', raw)
+    if match:
+        tail = (match.group(2) or '').replace('/', '\\')
+        return match.group(1).upper() + ':\\' + tail
+    if raw.startswith('//'):
+        parts = [part for part in raw[2:].split('/') if part]
+        if len(parts) >= 2:
+            return '\\\\' + '\\'.join(parts)
+    return raw
 
 
 def lock_fd(fd: int, *, shared: bool = False, nonblocking: bool = False) -> None:

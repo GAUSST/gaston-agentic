@@ -72,6 +72,12 @@ def worker_ownership(state, worker, launch):
             return process_state(state.get('queued_launcher')), True
         if launch.get('attempt') and launch['attempt']!=worker.get('attempt'):
             return process_state(launch.get('launcher')), True
+        # The parent publishes the child PID before it can acquire the launch
+        # lock and claim the attempt. Until claimed_at is durable, the Lead
+        # launcher is the owner; a transient Windows PID inspection failure
+        # must not let recovery supersede a worker that is still starting.
+        if launch.get('attempt') and worker.get('attempt')==launch.get('attempt') and not worker.get('claimed_at'):
+            return process_state(launch.get('launcher')), True
     return process_state(worker), False
 
 def wait_worker(folder: Path, *, timeout_seconds: int=BUILDER_WAIT_SECONDS, cancel_event=None, progress=None) -> dict:

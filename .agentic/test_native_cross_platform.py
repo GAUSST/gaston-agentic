@@ -65,6 +65,27 @@ class NativePlatformTests(unittest.TestCase):
             with runtime_recovery.feedback_worker_guard(root) as after:
                 self.assertTrue(after)
 
+    def test_claude_windows_hook_command_uses_git_bash_paths_and_round_trips(self):
+        import shlex
+        import native_hooks
+        with patch.object(native_hooks.os, 'name', 'nt'):
+            with patch.object(native_hooks.sys, 'executable', r'C:\Program Files\Python\python.exe'):
+                command = native_hooks.hook_def(
+                    'claude', 'SessionStart',
+                    r'C:\Users\Dev User\Gaston\native_hooks.py')['command']
+                args = shlex.split(command)
+                self.assertEqual(args, [
+                    '/c/Program Files/Python/python.exe',
+                    '/c/Users/Dev User/Gaston/native_hooks.py',
+                    'claude'
+                ])
+                parsed = native_hooks._hook_command_args(command, 'claude')
+                self.assertEqual(parsed, [
+                    r'C:\Program Files\Python\python.exe',
+                    r'C:\Users\Dev User\Gaston\native_hooks.py',
+                    'claude'
+                ])
+
     def test_windows_cmd_shim_uses_argument_array(self):
         import base64
         import json
@@ -163,9 +184,12 @@ class NativePlatformTests(unittest.TestCase):
                     ]
                     managed=[command for command in commands
                              if (lambda args: len(args)==3 and args[-1]==provider)(
-                                 pc.parse_command(command))]
+                                 native_hooks._hook_command_args(command,provider))]
                     self.assertEqual(len(managed),1,(provider,event,commands))
-                    self.assertEqual(Path(pc.parse_command(managed[0])[1]),current)
+                    self.assertEqual(
+                        Path(native_hooks._hook_command_args(managed[0],provider)[1]),
+                        current
+                    )
                 self.assertIn('unrelated-provider-hook',[
                     hook.get('command')
                     for group in data['hooks']['SessionStart']

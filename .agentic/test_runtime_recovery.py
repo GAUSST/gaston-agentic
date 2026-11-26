@@ -172,6 +172,20 @@ class NativeRecoveryTests(unittest.TestCase):
         self.assertEqual(launch['attempt'],worker['attempt'])
         self.assertEqual(worker['pid'],4242)
 
+    def test_unclaimed_child_uses_live_launcher_as_ownership(self):
+        import task_runtime
+        folder=self.task(stage='queued_for_builder',pid=4242)
+        orch.put(folder/'worker-launch.json',{'attempt':'a'*32,'started_at':time.time(),
+             'launcher':{'pid':1234,'host':socket.gethostname()}})
+        orch.put(folder/'worker.json',{'pid':4242,'attempt':'a'*32,'started_at':time.time()})
+        with patch('session_store.process_state',side_effect=lambda record:'live' if record.get('pid')==1234 else 'dead'):
+            owner,launching=task_runtime.worker_ownership(
+                orch.read_record(folder/'state.json'),
+                orch.read_record(folder/'worker.json'),
+                orch.read_record(folder/'worker-launch.json'))
+        self.assertEqual(owner,'live')
+        self.assertTrue(launching)
+
     def test_launch_claim_cannot_run_a_superseded_or_cancelled_attempt(self):
         folder=self.task(stage='queued_for_builder')
         attempt='a'*32

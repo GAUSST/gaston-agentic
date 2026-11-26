@@ -187,8 +187,9 @@ def claude_write_guard_configured(root: Path) -> bool:
                 continue
             for hook in group.get('hooks', []):
                 from platform_compat import parse_command
-                args = parse_command(hook.get('command', ''))
-                if hook.get('type') == 'command' and args[-2:] == [str(runtime_script('native_hooks.py') if central_mode() else root / '.agentic/native_hooks.py'), 'claude']:
+                args = _hook_command_args(hook.get('command', ''), 'claude')
+                expected = Path(runtime_script('native_hooks.py') if central_mode() else root / '.agentic/native_hooks.py')
+                if hook.get('type') == 'command' and len(args) == 3 and Path(args[1]).resolve() == expected.resolve() and args[2] == 'claude':
                     return True
     except (OSError, ValueError, TypeError, AttributeError):
         pass
@@ -229,7 +230,7 @@ def refresh_central_provider_hooks(root: Path) -> dict:
                 for group in data.get('hooks',{}).get(event,[]):
                     for hook in group.get('hooks',[]):
                         if hook.get('type')!='command':continue
-                        args=parse_command(hook.get('command',''))
+                        args=_hook_command_args(hook.get('command',''),provider)
                         if len(args)!=3 or args[-1]!=provider:continue
                         old=Path(args[1])
                         if not old.is_absolute() or old.resolve()!=old or old==current:continue
@@ -404,9 +405,36 @@ def command_line():
         return
 
 
+def _hook_command_args(command: str, provider: str) -> list[str]:
+    """Parse a hook using the shell grammar of the provider that executes it."""
+    from platform_compat import parse_command, msys_to_windows_path
+    if os.name == 'nt' and provider == 'claude':
+        args = shlex.split(command)
+    else:
+        args = parse_command(command)
+    if os.name == 'nt' and provider == 'claude' and len(args) == 3:
+        args = [msys_to_windows_path(value) if value.startswith('/') else value for value in args]
+    return args
+
+
+def _managed_hook_command(command: str, provider: str, script: Path) -> bool:
+    try:
+        args = _hook_command_args(command, provider)
+        return len(args) == 3 and Path(args[1]).resolve() == Path(script).resolve() and args[2] == provider
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def hook_def(provider: str, event: str, script: str):
-    cmd = (subprocess.list2cmdline([sys.executable,script,provider]) if os.name=='nt'
-           else shlex.quote(sys.executable) + ' ' + shlex.quote(script) + ' ' + provider)
+    if os.name == 'nt' and provider == 'claude':
+        from platform_compat import windows_to_msys_path
+        python = windows_to_msys_path(sys.executable)
+        target = windows_to_msys_path(script)
+        cmd = shlex.quote(python) + ' ' + shlex.quote(target) + ' ' + provider
+    elif os.name == 'nt':
+        cmd = subprocess.list2cmdline([sys.executable,script,provider])
+    else:
+        cmd = shlex.quote(sys.executable) + ' ' + shlex.quote(script) + ' ' + provider
     return {'type':'command','command':cmd,'timeout': 2 if event == 'SessionEnd' else 10}
 
 
@@ -445,9 +473,9 @@ def install_native_hooks(root: Path, *, approve: bool = False) -> bool:
                 if not isinstance(entry, dict): continue
                 sub = entry.get('hooks', [])
                 if not isinstance(sub, list): continue
+                managed_script = Path(runtime_script('native_hooks.py') if central_mode() else ROOT / '.agentic' / 'native_hooks.py')
                 sub[:] = [h for h in sub if not (isinstance(h, dict) and
-                    (str(runtime_script('native_hooks.py') if central_mode() else ROOT / '.agentic' / 'native_hooks.py') in str(h.get('command', '')))
-                    and str(h.get('command','')).strip().endswith(' '+provider))]
+                    _managed_hook_command(str(h.get('command','')), provider, managed_script))]
             # Remove empty groups created from older kit hook entries.
             entries[:] = [e for e in entries if isinstance(e, dict) and e.get('hooks')]
             entries.append({'hooks':[descriptor]})
@@ -509,8 +537,14 @@ def installed(root: Path) -> bool:
             needed = {'SessionStart', 'SessionEnd', 'Stop'}
             needed.add('PreToolUse')
             for event in needed:
-                if not any(script in str(x.get('command','')) for group in hooks.get(event, [])
-                           for x in group.get('hooks', [])):
+                if not any(
+                    x.get('type') == 'command' and _managed_hook_command(
+                        str(x.get('command','')),
+                        'codex' if name == '.codex/hooks.json' else 'claude',
+                        Path(script))
+                    for group in hooks.get(event, [])
+                    for x in group.get('hooks', [])
+                ):
                     return False
         except (OSError, ValueError, TypeError, AttributeError): return False
     return True
