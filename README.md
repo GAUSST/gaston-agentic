@@ -1,4 +1,4 @@
-# Gaston Agentic — v1.6.9
+# Gaston Agentic — v1.6.10
 
 **[Guide d’installation et d’utilisation (FR)](docs/GUIDE_FR.md)**
 
