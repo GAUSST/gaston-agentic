@@ -138,10 +138,10 @@ class NativePlatformTests(unittest.TestCase):
             body = Path(args[args.index('--output') + 1])
             if args[-1] == url:
                 body.write_bytes(b'')
-                return SimpleNamespace(returncode=0, stdout=('302\n' + redirect).encode())
+                return SimpleNamespace(returncode=0, stdout=('302\r\n' + redirect).encode())
             self.assertEqual(args[-1], redirect)
             body.write_bytes(b'archive')
-            return SimpleNamespace(returncode=0, stdout=b'200\n')
+            return SimpleNamespace(returncode=0, stdout=b'200\r\n')
 
         with patch.object(updater, '_windows_system_curl', return_value=Path('system-curl.exe')), \
              patch.object(updater.subprocess, 'run', side_effect=run), \
@@ -165,6 +165,58 @@ class NativePlatformTests(unittest.TestCase):
             with self.assertRaisesRegex(updater.UpdateError, 'curl exit 60'):
                 updater._download_windows_native(url, 20)
             self.assertEqual(run.call_count, 1)
+
+    def test_windows_curl_write_out_parser_accepts_lf_and_crlf(self):
+        import updater
+        url = 'https://codeload.github.com/publisher/gaston/legacy.zip/abc'
+        for sep in (b'\n', b'\r\n'):
+            self.assertEqual(updater._parse_windows_http_response(b'200' + sep), (200, ''))
+            self.assertEqual(updater._parse_windows_http_response(b'302' + sep + url.encode()),
+                             (302, url))
+        for bad in (b'200', b'20\n', b'200\r\r\n', b'200\n\xff'):
+            with self.assertRaises(updater.UpdateError):
+                updater._parse_windows_http_response(bad)
+        _, bad_url = updater._parse_windows_http_response(b'302\r\n' + url.encode() + b'\r\n')
+        with self.assertRaises(updater.UpdateError):
+            updater._github_download_url(bad_url)
+
+    @unittest.skipUnless(os.name == 'nt', 'Actual Windows curl write-out bytes')
+    def test_windows_system_curl_write_out_against_local_http_fixture(self):
+        import updater
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from threading import Thread
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                if self.path == '/redirect':
+                    self.send_response(302)
+                    self.send_header('Location', '/ok')
+                    self.send_header('Content-Length', '0')
+                    self.end_headers()
+                else:
+                    self.send_response(200)
+                    self.send_header('Content-Length', '2')
+                    self.end_headers()
+                    self.wfile.write(b'ok')
+            def log_message(self, *_args):
+                pass
+
+        with HTTPServer(('127.0.0.1', 0), Handler) as server:
+            thread = Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = 'http://127.0.0.1:' + str(server.server_port)
+                for path, expected in (('/ok', (200, '')), ('/redirect', (302, base + '/ok'))):
+                    result = subprocess.run(
+                        [str(updater._windows_system_curl()), '--disable', '--silent',
+                         '--show-error', '--noproxy', '*', '--output', os.devnull,
+                         '--write-out', '%{http_code}\n%{redirect_url}', base + path],
+                        capture_output=True, timeout=10, check=True)
+                    self.assertEqual(updater._parse_windows_http_response(result.stdout),
+                                     expected, repr(result.stdout))
+            finally:
+                server.shutdown()
+                thread.join(timeout=5)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows system HTTPS executable')
     def test_windows_system_curl_is_native_tls_client(self):

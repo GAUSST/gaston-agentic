@@ -154,6 +154,19 @@ def _windows_system_curl() -> Path:
     return curl
 
 
+def _parse_windows_http_response(stdout: bytes) -> tuple[int, str]:
+    # System curl can translate write-out LF to CRLF when stdout is a pipe.
+    # Normalize only the separator, never the destination URL.
+    status, separator, redirect = stdout.partition(b'\n')
+    status = status.removesuffix(b'\r')
+    if not separator or not re.fullmatch(rb'[0-9]{3}', status):
+        raise UpdateError('Invalid Windows GitHub HTTP response')
+    try:
+        return int(status), redirect.decode('utf-8', errors='strict')
+    except UnicodeDecodeError as exc:
+        raise UpdateError('Invalid Windows GitHub redirect encoding') from exc
+
+
 def _download_windows_native(url: str, limit: int) -> bytes:
     """Retry certificate-chain failures with Windows' native HTTPS transport.
 
@@ -198,10 +211,7 @@ def _download_windows_native(url: str, limit: int) -> bytes:
                 # Avoid printing proxy credentials or arbitrary remote output.
                 raise UpdateError('Windows native GitHub HTTPS failed (curl exit '
                                   + str(result.returncode) + ')')
-            fields = result.stdout.decode('utf-8', errors='strict').split('\n', 1)
-            if len(fields) != 2 or not re.fullmatch(r'[0-9]{3}', fields[0]):
-                raise UpdateError('Invalid Windows GitHub HTTP response')
-            status, redirect = int(fields[0]), fields[1]
+            status, redirect = _parse_windows_http_response(result.stdout)
             if status in (301, 302, 303, 307, 308):
                 _github_download_url(redirect)
                 url = redirect
