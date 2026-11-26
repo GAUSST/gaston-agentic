@@ -86,6 +86,82 @@ class NativePlatformTests(unittest.TestCase):
                     'claude'
                 ])
 
+                # v1.6.8 and earlier stored native Windows paths in Claude
+                # Bash hooks. POSIX shlex removes their backslashes.
+                legacy = (
+                    r'C:\Users\LENOVO.local\share\gaston\bootstrap\Scripts\python.exe '
+                    r'C:\Users\LENOVO.local\share\gaston\versions\v1.6.8\gaston_engine\native_hooks.py claude'
+                )
+                self.assertEqual(native_hooks._hook_command_args(legacy, 'claude'), [
+                    r'C:\Users\LENOVO.local\share\gaston\bootstrap\Scripts\python.exe',
+                    r'C:\Users\LENOVO.local\share\gaston\versions\v1.6.8\gaston_engine\native_hooks.py',
+                    'claude'
+                ])
+                quoted_legacy = (
+                    r'"C:\Program Files\Gaston\bootstrap\Scripts\python.exe" '
+                    r'"C:\Program Files\Gaston\versions\v1.6.8\gaston_engine\native_hooks.py" claude'
+                )
+                self.assertEqual(native_hooks._hook_command_args(quoted_legacy, 'claude'), [
+                    r'C:\Program Files\Gaston\bootstrap\Scripts\python.exe',
+                    r'C:\Program Files\Gaston\versions\v1.6.8\gaston_engine\native_hooks.py',
+                    'claude'
+                ])
+
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows-only end-to-end hook repair')
+    def test_central_refresh_repairs_legacy_v168_windows_claude_hooks(self):
+        import json
+        import native_hooks
+
+        with tempfile.TemporaryDirectory(prefix='gaston hook refresh ') as td:
+            root = Path(td).resolve()
+            global_home = root / 'global'
+            versions = global_home / 'versions'
+            old = versions / 'v1.6.8' / 'gaston_engine' / 'native_hooks.py'
+            current = versions / 'v1.6.12' / 'gaston_engine' / 'native_hooks.py'
+            base = global_home / 'bootstrap' / 'Lib' / 'site-packages' / 'gaston_engine' / 'native_hooks.py'
+            python = global_home / 'bootstrap' / 'Scripts' / 'python.exe'
+            for path in (old, current, base):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('# fixture', encoding='utf-8')
+
+            config = root / '.claude' / 'settings.local.json'
+            config.parent.mkdir(parents=True)
+            events = ('SessionStart', 'SessionEnd', 'PreToolUse', 'Stop')
+            legacy_command = subprocess.list2cmdline([str(python), str(old), 'claude'])
+            config.write_text(json.dumps({
+                'hooks': {
+                    event: [{'hooks': [{
+                        'type': 'command', 'command': legacy_command, 'timeout': 10
+                    }]}] for event in events
+                }
+            }), encoding='utf-8')
+
+            class Distribution:
+                def locate_file(self, name):
+                    if name != 'gaston_engine/native_hooks.py':
+                        raise AssertionError(name)
+                    return base
+
+            with (
+                patch.object(native_hooks, 'central_mode', return_value=True),
+                patch.object(native_hooks, 'runtime_script', return_value=current),
+                patch('central_update.home', return_value=global_home),
+                patch('importlib.metadata.distribution', return_value=Distribution()),
+                patch.object(native_hooks.sys, 'executable', str(python)),
+            ):
+                refreshed = native_hooks.refresh_central_provider_hooks(root)
+
+            self.assertEqual(refreshed, {'claude': True, 'codex': False})
+            repaired = json.loads(config.read_text(encoding='utf-8'))['hooks']
+            for event in events:
+                command = repaired[event][0]['hooks'][0]['command']
+                self.assertEqual(
+                    native_hooks._hook_command_args(command, 'claude'),
+                    [str(python), str(current), 'claude']
+                )
+                self.assertNotIn('C:', command)
+
     def test_windows_cmd_shim_uses_argument_array(self):
         import base64
         import json
