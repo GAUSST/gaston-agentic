@@ -196,9 +196,16 @@ def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
         if argv and argv[0] == 'flutter':
             argv[0] = resolve_flutter(cwd, workspace=ROOT)
         argv, env, _ = prepare_subprocess(argv, env)
-        return run_verification_process(argv, cwd=cwd, env=env, timeout=timeout,
-                                        output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get(),
-                                        job_name=_VERIFICATION_JOB.get())
+        job_name = _VERIFICATION_JOB.get()
+        if job_name:
+            import verification_coordination as coordination
+            coordination.begin_windows_command(ROOT,job_name)
+        result = run_verification_process(argv, cwd=cwd, env=env, timeout=timeout,
+                                          output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get(),
+                                          job_name=job_name)
+        if job_name and result.get('owned_processes_terminated') is True:
+            coordination.confirm_windows_cleanup(ROOT,job_name)
+        return result
     except (OSError, ValueError, RuntimeError) as exc:
         return {'exit_code':None, 'reason':'execution_failed', 'stderr':str(exc)[-1000:]}
 

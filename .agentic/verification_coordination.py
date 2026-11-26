@@ -52,10 +52,37 @@ def _recover_proven_windows_job(root, row):
     session=windows_session_id()
     name='Local\\GastonVerification-'+token
     if (session is None or row.get('windows_session')!=session
-            or row.get('windows_job')!=name or not windows_verification_job_gone(name)):
+            or row.get('windows_job')!=name
+            or row.get('windows_cleanup') not in ('not_started','confirmed')
+            or not windows_verification_job_gone(name)):
         return False
-    _archive_interrupted(root,row,proof='dead_owner_and_destroyed_windows_job')
+    # Disappearance of a name is NOT proof of termination. Recovery needs
+    # a durable receipt from the runner or proof it never began.
+    _archive_interrupted(root,row,proof='dead_owner_with_positive_windows_cleanup_receipt')
     return True
+
+
+def _transition_windows_cleanup(root, name, *, previous, following):
+    with orch.mutation_guard(root):
+        row=active(root)
+        if (not row or row.get('windows_job')!=name
+                or (row.get('owner') or {}).get('pid')!=os.getpid()
+                or row.get('owner_state')!='live'
+                or row.get('windows_cleanup')!=previous):
+            raise ValueError('Cannot establish ownership of Windows verification reservation')
+        row.pop('owner_state',None)
+        row['windows_cleanup']=following
+        orch.put(_path(root),row)
+
+
+def begin_windows_command(root, name):
+    # Persist before any command process can be launched.
+    _transition_windows_cleanup(root,name,previous='not_started',following='running')
+
+
+def confirm_windows_cleanup(root, name):
+    # Called only after the actual owned job/process wait succeeded.
+    _transition_windows_cleanup(root,name,previous='running',following='confirmed')
 
 
 def recover_proven_interruption(root):
@@ -162,7 +189,8 @@ def reserve(root,kind,project,*,integrated=False,task_id=None):
             from platform_compat import windows_session_id
             session=windows_session_id()
             if session is not None:
-                job={'windows_job':'Local\\GastonVerification-'+token,'windows_session':session}
+                job={'windows_job':'Local\\GastonVerification-'+token,'windows_session':session,
+                     'windows_cleanup':'not_started'}
         orch.put(_path(root),{'token':token,'owner':{'pid':os.getpid(),'host':socket.gethostname(),**process_identity(os.getpid())},
                               'kind':kind,'project':project,'task_id':task_id,'read_scope':scope,'started_at':time.time(),**job})
     try:yield {'read_scope':scope,'fingerprints':before,'parallel_with':[w['task_id'] for w in running],**job}
@@ -170,10 +198,11 @@ def reserve(root,kind,project,*,integrated=False,task_id=None):
         with orch.mutation_guard(root):
             current=active(root)
             if current and current.get('token')==token:
-                # If a Windows job still exists, cleanup is unconfirmed.
-                # Preserve the reservation for safe recovery, not a false unlock.
+                # The job's namespace entry may disappear before children exit.
+                # Keep an interrupted/failed cleanup reserved until positive proof.
                 if job:
                     from platform_compat import windows_verification_job_gone
-                    if not windows_verification_job_gone(job['windows_job']):
+                    if (current.get('windows_cleanup') not in ('not_started','confirmed')
+                            or not windows_verification_job_gone(job['windows_job'])):
                         raise ValueError('Windows verification job cleanup is unconfirmed; reservation preserved')
                 _path(root).unlink(missing_ok=True)

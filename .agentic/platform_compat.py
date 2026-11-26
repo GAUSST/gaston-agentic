@@ -250,11 +250,10 @@ def windows_session_id():
 
 
 def windows_verification_job_gone(name):
-    """Read-only existence check; unknown/denied is never proof of cleanup.
+    """Check a private named job's namespace entry, not process termination.
 
-    Windows retains a job until its last handle is closed and associated
-    processes have terminated. A private, session-scoped named job gives the
-    next verifier proof that the old owned command tree is gone.
+    The name can disappear while termination is still asynchronous. Only a
+    separate positive cleanup receipt can establish that the owned tree drained.
     """
     if not WINDOWS or not isinstance(name, str) or not re.fullmatch(r'Local\\GastonVerification-[0-9a-f]{32}', name):
         return False
@@ -439,6 +438,10 @@ def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=90
                     stop_owned(proc, isolated_group=True, grace_seconds=1)
                 if proc:
                     proc.wait(timeout=5)
+                if WINDOWS:
+                    # A successful stop queried the actual job's active
+                    # process count before close; the name alone proves nothing.
+                    result['owned_processes_terminated'] = True
             except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
                 result.update(exit_code=None, reason='cleanup_failed', detail=str(exc))
             finally:
