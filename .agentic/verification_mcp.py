@@ -12,6 +12,7 @@ import atexit
 import signal
 import hashlib
 from contextlib import redirect_stdout
+from contextvars import ContextVar
 import secrets
 import uuid
 import os
@@ -183,20 +184,19 @@ for _tool in TOOLS:
         _tool['description']='Send one root-cause-based focused correction delta; after two unsuccessful correction rounds the Lead must repair directly. Quota/interruption resumes do not consume a correction round. Environment diagnosis belongs to Lead.'
         _tool['inputSchema']['properties'].update(failure_kind={'type':'string','enum':['implementation','architecture','specification','test_fixture','environment','regression']},root_cause=_str,reproduction=_str)
 
+_VERIFICATION_CANCEL = ContextVar('verification_cancel', default=None)
+
+
 def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
     try:
-        from platform_compat import prepare_subprocess, resolve_flutter
+        from platform_compat import prepare_subprocess, resolve_flutter, run_verification_process
         cwd = Path(cwd or ROOT)
         argv = list(argv)
         if argv and argv[0] == 'flutter':
             argv[0] = resolve_flutter(cwd, workspace=ROOT)
         argv, env, _ = prepare_subprocess(argv, env)
-        result = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, text=True, timeout=timeout, check=False)
-        return {'exit_code':result.returncode, 'stdout':result.stdout[-output_limit:], 'stderr':result.stderr[-output_limit:]}
-    except subprocess.TimeoutExpired as exc:
-        return {'exit_code':None, 'reason':'timeout', 'timeout_seconds':timeout,
-                'stderr':str(exc)[-1000:]}
+        return run_verification_process(argv, cwd=cwd, env=env, timeout=timeout,
+                                        output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get())
     except (OSError, ValueError, RuntimeError) as exc:
         return {'exit_code':None, 'reason':'execution_failed', 'stderr':str(exc)[-1000:]}
 
@@ -1373,7 +1373,11 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
     if cancel_event is not None and cancel_event.is_set():return response('blocked',reason='Verification cancelled before execution')
     try:
         with coordination.reserve(ROOT,kind,project,integrated=bool(task.get('checkpoint_acceptance')),task_id=task_id) as reservation:
-            return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event)
+            token = _VERIFICATION_CANCEL.set(cancel_event)
+            try:
+                return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event)
+            finally:
+                _VERIFICATION_CANCEL.reset(token)
     except coordination.Busy as exc:
         return response('blocked',reason=str(exc),requires_idle_workspace=exc.fields['blocker']=='workspace_not_idle',**exc.fields)
     except (OSError,ValueError) as exc:return response('blocked',reason='Verification coordination: '+str(exc))

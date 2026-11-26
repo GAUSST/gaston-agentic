@@ -206,6 +206,186 @@ def stop_owned(proc: subprocess.Popen, *, isolated_group=False, grace_seconds=3)
 
 
 
+class _WindowsVerificationJob:
+    """Own the complete verifier process tree, even after its parent exits.
+
+    The Python gate starts without launching the command. Assign its process
+    to a kill-on-close job before allowing it to create descendants.
+    """
+    def __init__(self):
+        import ctypes
+        from ctypes import wintypes
+
+        class BasicLimits(ctypes.Structure):
+            _fields_ = [
+                ('PerProcessUserTimeLimit', ctypes.c_longlong),
+                ('PerJobUserTimeLimit', ctypes.c_longlong),
+                ('LimitFlags', wintypes.DWORD),
+                ('MinimumWorkingSetSize', ctypes.c_size_t),
+                ('MaximumWorkingSetSize', ctypes.c_size_t),
+                ('ActiveProcessLimit', wintypes.DWORD),
+                ('Affinity', ctypes.c_size_t),
+                ('PriorityClass', wintypes.DWORD),
+                ('SchedulingClass', wintypes.DWORD),
+            ]
+
+        class IOCounters(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_ulonglong) for name in
+                        ('ReadOperationCount', 'WriteOperationCount', 'OtherOperationCount',
+                         'ReadTransferCount', 'WriteTransferCount', 'OtherTransferCount')]
+
+        class ExtendedLimits(ctypes.Structure):
+            _fields_ = [('BasicLimitInformation', BasicLimits), ('IoInfo', IOCounters),
+                        ('ProcessMemoryLimit', ctypes.c_size_t), ('JobMemoryLimit', ctypes.c_size_t),
+                        ('PeakProcessMemoryUsed', ctypes.c_size_t), ('PeakJobMemoryUsed', ctypes.c_size_t)]
+
+        class Accounting(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_longlong) for name in
+                        ('TotalUserTime', 'TotalKernelTime', 'ThisPeriodTotalUserTime', 'ThisPeriodTotalKernelTime')] + [
+                            (name, wintypes.DWORD) for name in
+                            ('TotalPageFaultCount', 'TotalProcesses', 'ActiveProcesses', 'TotalTerminatedProcesses')]
+
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        for name, args, result in (
+            ('CreateJobObjectW', [ctypes.c_void_p, wintypes.LPCWSTR], wintypes.HANDLE),
+            ('SetInformationJobObject', [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD], wintypes.BOOL),
+            ('AssignProcessToJobObject', [wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
+            ('TerminateJobObject', [wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            ('QueryInformationJobObject', [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p], wintypes.BOOL),
+            ('CloseHandle', [wintypes.HANDLE], wintypes.BOOL),
+        ):
+            fn = getattr(kernel, name)
+            fn.argtypes = args
+            fn.restype = result
+        self.kernel, self.ctypes, self.accounting = kernel, ctypes, Accounting
+        self.handle = kernel.CreateJobObjectW(None, None)
+        if not self.handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        limits = ExtendedLimits()
+        limits.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
+        if not kernel.SetInformationJobObject(self.handle, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            error = ctypes.WinError(ctypes.get_last_error())
+            self.close()
+            raise error
+
+    def assign(self, proc):
+        # Use the original Popen process handle, not a potentially recycled PID.
+        if not self.kernel.AssignProcessToJobObject(self.handle, int(proc._handle)):
+            raise self.ctypes.WinError(self.ctypes.get_last_error())
+
+    def stop(self):
+        if not self.kernel.TerminateJobObject(self.handle, 1):
+            raise self.ctypes.WinError(self.ctypes.get_last_error())
+        deadline = time.monotonic() + 5
+        while True:
+            info = self.accounting()
+            if not self.kernel.QueryInformationJobObject(
+                    self.handle, 1, self.ctypes.byref(info), self.ctypes.sizeof(info), None):
+                raise self.ctypes.WinError(self.ctypes.get_last_error())
+            if not info.ActiveProcesses:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Owned Windows verification processes did not terminate')
+            time.sleep(.05)
+
+    def close(self):
+        if self.handle:
+            self.kernel.CloseHandle(self.handle)
+            self.handle = None
+
+
+def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=9000, cancel_event=None):
+    """Bound execution and cleanup without waiting for inherited output-pipe EOF.
+
+    Disk-backed private output handles survive a descendant retaining stdout
+    without making the MCP thread wait for EOF. Standard input is never the
+    MCP protocol. Windows uses an assigned Job Object; POSIX uses an isolated
+    process group. The real command exit code is collected before cleanup.
+    """
+    import json
+    import locale
+    import sys
+    import tempfile
+
+    started = time.monotonic()
+    deadline = started + timeout
+    result = {'exit_code': None}
+    proc = job = None
+    assigned = False
+    encoding = locale.getpreferredencoding(False)
+    with tempfile.TemporaryFile(mode='w+b') as out, tempfile.TemporaryFile(mode='w+b') as err:
+        try:
+            if cancel_event is not None and cancel_event.is_set():
+                result['reason'] = 'cancelled'
+            else:
+                kwargs = dict(cwd=cwd, env=env, stdout=out, stderr=err, close_fds=True, **popen_kwargs())
+                if WINDOWS:
+                    job = _WindowsVerificationJob()
+                    # The base interpreter avoids a venv redirector spawning an
+                    # unassigned intermediary. The gate cannot launch before
+                    # the parent explicitly releases it after job assignment.
+                    gate = ("import json, subprocess, sys\n"
+                            "if sys.stdin.buffer.read(1) != b'1': sys.exit(125)\n"
+                            "try:\n"
+                            "    sys.exit(subprocess.call(json.loads(sys.argv[1]), stdin=subprocess.DEVNULL))\n"
+                            "except OSError as exc:\n"
+                            "    print(str(exc), file=sys.stderr); sys.exit(127)\n")
+                    proc = subprocess.Popen(
+                        [sys._base_executable, '-I', '-c', gate, json.dumps(argv)],
+                        stdin=subprocess.PIPE, **kwargs)
+                    job.assign(proc)
+                    assigned = True
+                    proc.stdin.write(b'1')
+                    proc.stdin.close()
+                else:
+                    proc = subprocess.Popen(argv, stdin=subprocess.DEVNULL, **kwargs)
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        result['reason'] = 'cancelled'
+                        break
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        result.update(reason='timeout', timeout_seconds=timeout)
+                        break
+                    try:
+                        result['exit_code'] = proc.wait(timeout=min(.25, remaining))
+                        break
+                    except subprocess.TimeoutExpired:
+                        continue
+        except (OSError, RuntimeError, ValueError) as exc:
+            result.update(exit_code=None, reason='execution_failed', detail=str(exc))
+        finally:
+            try:
+                if job and assigned:
+                    # Includes children whose original parent already exited.
+                    job.stop()
+                elif proc and WINDOWS:
+                    # Failed assignment: the unreleased gate never ran the tool.
+                    if proc.stdin and not proc.stdin.closed:
+                        proc.stdin.close()
+                    if proc.poll() is None:
+                        proc.kill()
+                elif proc:
+                    stop_owned(proc, isolated_group=True, grace_seconds=1)
+                if proc:
+                    proc.wait(timeout=5)
+            except (OSError, RuntimeError, subprocess.TimeoutExpired) as exc:
+                result.update(exit_code=None, reason='cleanup_failed', detail=str(exc))
+            finally:
+                if job:
+                    job.close()
+        def tail(stream):
+            if not output_limit:
+                return ''
+            end = stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, end - output_limit * 4))
+            return stream.read(output_limit * 4).decode(encoding, errors='replace')[-output_limit:]
+        result.update(stdout=tail(out), stderr=tail(err), elapsed_seconds=round(time.monotonic()-started, 3))
+        if result.get('detail'):
+            result['stderr'] = (result['stderr'] + '\n' + result['detail'])[-output_limit:]
+        return result
+
+
 def resolve_flutter(cwd: Path, *, workspace: Path | None = None) -> str:
     """Select an installed project-pinned Flutter SDK without installing anything.
 
