@@ -1,4 +1,4 @@
-# Gaston Agentic — v1.6.8
+# Gaston Agentic — v1.6.9
 
 **[Guide d’installation et d’utilisation (FR)](docs/GUIDE_FR.md)**
 
@@ -147,4 +147,4 @@ Gaston keeps the engine **outside your application**. Run `dev init` in an exist
 
 Legacy `.agentic` projects remain usable until you explicitly approve `dev migrate`. This migration checksum-verifies and preserves project context before removing verified legacy engine files. `dev uninstall` defaults to keeping project memory and offers a separately confirmed full erase. Signed global updates and rollback are isolated from applications.
 
-See [central-engine architecture and release acceptance](docs/CENTRAL_ENGINE_MIGRATION.md) for limitations and mandatory real-provider verification. The Windows cross-platform hook-refresh and `.cmd` launch hardening is included in v1.6.8. CI covers automated platform regressions; authenticated Claude ↔ Codex delegation must still be verified on a real developer machine.
+See [central-engine architecture and release acceptance](docs/CENTRAL_ENGINE_MIGRATION.md) for limitations and mandatory real-provider verification. The Windows cross-platform hook-refresh and `.cmd` launch hardening is included in v1.6.9. CI covers automated platform regressions; authenticated Claude ↔ Codex delegation must still be verified on a real developer machine.
