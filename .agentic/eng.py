@@ -1217,6 +1217,13 @@ def verify(task: dict, rundir: Path, cfg: dict):
         name = step['name']
         cwd = check_cwd(step)
         argv = [str(x) for x in step['command']]
+        if argv and argv[0]=='flutter':
+            from platform_compat import resolve_flutter
+            try:
+                argv[0]=resolve_flutter(cwd,workspace=ROOT)
+            except (OSError,ValueError) as exc:
+                results.append({'name':name,'result':'blocked','reason':str(exc)})
+                continue
         # Execute the same command in the same cwd only once per verification
         # pass, even when separate gates refer to it. Shared results are
         # explicitly labeled, not represented as two independent suites.
@@ -1303,7 +1310,8 @@ def java_major_version() -> int | None:
 
 
 def detected_maestro():
-    return shutil.which('maestro') or str(Path.home()/'.maestro/bin/maestro') if (shutil.which('maestro') or (Path.home()/'.maestro/bin/maestro').exists()) else None
+    from platform_compat import maestro_binary
+    return maestro_binary()
 
 
 def maestro_setup(*, install=False, yes=False, dry_run=False, check_only=False, language='en',

@@ -88,10 +88,14 @@ def run(root, project, relative_path=None, *, execute, sdk_tool, avd_names,
         flow = flow_path(root, app, relative_path)
         if not flow:
             return outcome('blocked', 'No existing Maestro YAML flow for this application')
-        flutter = shutil.which('flutter')
-        if not flutter or not adb:
-            return outcome('blocked', 'Flutter SDK or Android adb is unavailable')
-        if not (shutil.which('maestro') or (Path.home() / '.maestro/bin/maestro').is_file()):
+        from platform_compat import resolve_flutter, maestro_binary
+        try:
+            flutter = resolve_flutter(app, workspace=root)
+        except (OSError, ValueError) as exc:
+            return outcome('blocked', str(exc))
+        if not adb:
+            return outcome('blocked', 'Android adb is unavailable')
+        if not maestro_binary():
             return outcome('blocked', 'Maestro CLI is unavailable')
         aapt = apk_tool(adb)
         if not aapt:

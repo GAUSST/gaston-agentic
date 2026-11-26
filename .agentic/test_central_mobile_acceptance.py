@@ -79,7 +79,8 @@ class MobileAcceptanceTests(unittest.TestCase):
         self.now += seconds
 
     def run_check(self, relative_path=None):
-        with patch.object(mobile.shutil, 'which', side_effect=lambda name: name), \
+        with patch('platform_compat.resolve_flutter', return_value='flutter'), \
+                patch('platform_compat.maestro_binary', return_value='maestro'), \
                 patch.object(mobile, 'apk_tool', return_value='aapt'):
             return mobile.run(self.root, 'app', relative_path, execute=self.execute,
                               sdk_tool=lambda name: name, avd_names=lambda: ['Test_AVD'],
