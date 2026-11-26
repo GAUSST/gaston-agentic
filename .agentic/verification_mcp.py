@@ -734,31 +734,49 @@ def _mark_builder_queued(folder, **fields):
 
 
 def _launch_builder(folder, *, revision=0):
+    """Reserve and spawn one Builder attempt under the workspace launch lock.
+
+    The child claims the same lock before provider invocation. Holding it from
+    reservation through publication of worker.json prevents a concurrent
+    Lead/tool request from replacing worker-launch.json while the first child
+    is starting (the source of false "Superseded Builder launch" exits).
+    """
     import eng
     from session_store import process_identity
     import socket
-    started_at = time.time()
-    prior = orch.read_record(folder/'worker.json')
-    if prior:
-        # Preserve the exact old attempt even when its task and revision are reused.
-        orch.put(folder/'worker-attempts'/f"{uuid.uuid4().hex}.json", prior)
-    attempt = uuid.uuid4().hex
-    launch = {'attempt':attempt, 'started_at':started_at, 'launcher':{'pid':os.getpid(), 'host':socket.gethostname(), **process_identity(os.getpid())}}
-    orch.put(folder/'worker-launch.json', launch)
-    with (folder/'worker.log').open('ab') as out:
-        try:
-            proc = subprocess.Popen([sys.executable, str(runtime_script('live_builder_worker.py')), folder.name, attempt],
-                cwd=ROOT, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
-                **__import__('platform_compat').popen_kwargs(), env=_builder_worker_env())
-        except OSError as exc:
-            with redirect_stdout(sys.stderr):
-                eng.save_state(folder, 'blocked', reason=f'Cannot start Builder worker: {exc}', blocker='worker_start_failed', resumable=True, revision=revision)
-            orch.put(folder/'worker-finished.json', {'finished_at':time.time(), 'stage':'blocked','revision':revision})
+    with orch.mutation_guard(ROOT):
+        state = orch.read_record(folder/'state.json')
+        if state.get('stage') != 'queued_for_builder':
             return None
-    orch.put(folder/'worker.json', {'pid':proc.pid, 'started_at':started_at, 'attempt':attempt, 'host':socket.gethostname(), **process_identity(proc.pid)})
-    import wait_guard
-    wait_guard.begin(folder, attempt, os.environ.get('GASTON_SESSION_LEASE'))
-    return proc.pid
+        prior = orch.read_record(folder/'worker.json')
+        if prior and type(prior.get('pid')) is int:
+            owner_state = orch.process_state(prior)
+            finished = orch.read_record(folder/'worker-finished.json').get('finished_at')
+            begun = prior.get('started_at')
+            if owner_state != 'dead' and isinstance(begun,(float,int)) and (not isinstance(finished,(float,int)) or finished < begun):
+                # Another launch already owns this queued task. Never supersede it.
+                return None
+        started_at = time.time()
+        if prior:
+            # Preserve the exact old attempt even when its task and revision are reused.
+            orch.put(folder/'worker-attempts'/f"{uuid.uuid4().hex}.json", prior)
+        attempt = uuid.uuid4().hex
+        launch = {'attempt':attempt, 'started_at':started_at, 'launcher':{'pid':os.getpid(), 'host':socket.gethostname(), **process_identity(os.getpid())}}
+        orch.put(folder/'worker-launch.json', launch)
+        with (folder/'worker.log').open('ab') as out:
+            try:
+                proc = subprocess.Popen([sys.executable, str(runtime_script('live_builder_worker.py')), folder.name, attempt],
+                    cwd=ROOT, stdin=subprocess.DEVNULL, stdout=out, stderr=subprocess.STDOUT,
+                    **__import__('platform_compat').popen_kwargs(), env=_builder_worker_env())
+            except OSError as exc:
+                with redirect_stdout(sys.stderr):
+                    eng.save_state(folder, 'blocked', reason=f'Cannot start Builder worker: {exc}', blocker='worker_start_failed', resumable=True, revision=revision)
+                orch.put(folder/'worker-finished.json', {'finished_at':time.time(), 'stage':'blocked','revision':revision})
+                return None
+        orch.put(folder/'worker.json', {'pid':proc.pid, 'started_at':started_at, 'attempt':attempt, 'host':socket.gethostname(), **process_identity(proc.pid)})
+        import wait_guard
+        wait_guard.begin(folder, attempt, os.environ.get('GASTON_SESSION_LEASE'))
+        return proc.pid
 
 
 def _resume_builder(args):
