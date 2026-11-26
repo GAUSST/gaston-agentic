@@ -16,6 +16,7 @@ import time
 # startup and evidence writing; an explicit shorter wait is diagnostic only.
 BUILDER_WAIT_SECONDS = 3600
 MCP_TOOL_TIMEOUT_SECONDS = BUILDER_WAIT_SECONDS + 120
+WORKER_STARTUP_GRACE_SECONDS = 15
 
 RUNNING = frozenset({'queued_for_builder','implementing','repairing','verifying'})
 
@@ -77,6 +78,14 @@ def worker_ownership(state, worker, launch):
         # launcher is the owner; a transient Windows PID inspection failure
         # must not let recovery supersede a worker that is still starting.
         if launch.get('attempt') and worker.get('attempt')==launch.get('attempt') and not worker.get('claimed_at'):
+            # A published worker that never claimed and is demonstrably dead
+            # must not remain queued for the entire lifetime of its Lead.
+            # Allow startup grace for transient inspection failures. Recovery
+            # reconciles under the same mutation lock as claim_worker.
+            started=worker.get('started_at')
+            if (isinstance(started,(int,float)) and time.time()-started>=WORKER_STARTUP_GRACE_SECONDS
+                    and worker.get('start_ticks') and process_state(worker)=='dead'):
+                return 'dead', True
             return process_state(launch.get('launcher')), True
     return process_state(worker), False
 

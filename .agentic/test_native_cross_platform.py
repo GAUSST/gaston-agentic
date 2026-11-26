@@ -13,6 +13,90 @@ sys.path.insert(0,str(ROOT))
 import gaston_cli
 
 class NativePlatformTests(unittest.TestCase):
+    @unittest.skipUnless(os.name == 'nt', 'Windows venv redirector integration')
+    def test_real_venv_worker_claims_reserved_launcher_pid(self):
+        import json
+        import socket
+        import time
+        import venv
+        import orchestration as orch
+        import runtime_recovery as recovery
+        from project_layout import project_state
+        from session_store import process_identity
+
+        with tempfile.TemporaryDirectory(prefix='gaston worker claim ') as td:
+            root = Path(td).resolve()
+            env_dir = root / 'bootstrap'
+            venv.EnvBuilder(with_pip=False, system_site_packages=True).create(env_dir)
+            python = env_dir / 'Scripts/python.exe'
+            folder = project_state(root) / 'runs' / 'venv-worker-claim'
+            folder.mkdir(parents=True)
+            attempt = 'a' * 32
+            started = time.time()
+            orch.put(folder / 'state.json', {'stage': 'queued_for_builder'})
+            orch.put(folder / 'worker-launch.json', {
+                'attempt': attempt, 'started_at': started,
+                'launcher': {'pid': os.getpid(), 'host': socket.gethostname(),
+                             **process_identity(os.getpid())},
+            })
+            script = (
+                "import sys, os, json; from pathlib import Path; "
+                "sys.path.insert(0, sys.argv[1]); import runtime_recovery as r; "
+                "ok=r.claim_worker(Path(sys.argv[2]), Path(sys.argv[3]), sys.argv[4]); "
+                "print(json.dumps(dict(ok=ok,pid=os.getpid(),parent=os.getppid()))); "
+                "sys.exit(0 if ok else 1)"
+            )
+            with orch.mutation_guard(root):
+                proc = subprocess.Popen(
+                    [str(python), '-c', script, str(ROOT / '.agentic'),
+                     str(root), str(folder), attempt],
+                    cwd=root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    text=True, **pc.popen_kwargs()
+                )
+                try:
+                    identity = process_identity(proc.pid)
+                    self.assertTrue(identity.get('start_ticks'), identity)
+                    orch.put(folder / 'worker.json', {
+                        'pid': proc.pid, 'attempt': attempt, 'started_at': started,
+                        'host': socket.gethostname(), **identity,
+                    })
+                except BaseException:
+                    proc.kill()
+                    proc.communicate()
+                    raise
+            try:
+                stdout, stderr = proc.communicate(timeout=30)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+                raise
+            self.assertEqual(proc.returncode, 0, stdout + stderr)
+            result = json.loads(stdout.strip().splitlines()[-1])
+            self.assertTrue(result['ok'])
+            self.assertIn(proc.pid, (result['pid'], result['parent']))
+            claimed = orch.read_record(folder / 'worker.json')
+            self.assertEqual(claimed['pid'], result['pid'])
+            self.assertEqual(claimed['attempt'], attempt)
+            self.assertTrue(claimed['claimed_at'])
+            # A separate process may not take over the already-claimed attempt.
+            self.assertFalse(recovery.claim_worker(root, folder, attempt))
+
+    def test_dead_unclaimed_worker_does_not_wait_for_live_lead(self):
+        import time
+        import task_runtime
+        started = time.time() - task_runtime.WORKER_STARTUP_GRACE_SECONDS - 1
+        worker = {'pid': 4321, 'attempt': 'a'*32, 'started_at': started,
+                  'start_ticks': '12345'}
+        launch = {'attempt': 'a'*32, 'started_at': started, 'launcher': {'pid': 1234}}
+        state = {'stage': 'queued_for_builder', 'queued_at': started}
+        with patch('session_store.process_state', side_effect=lambda record:
+                   'dead' if record.get('pid') == 4321 else 'live'):
+            self.assertEqual(task_runtime.worker_ownership(state, worker, launch),
+                             ('dead', True))
+            worker['started_at'] = time.time()
+            self.assertEqual(task_runtime.worker_ownership(state, worker, launch),
+                             ('live', True))
+
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
