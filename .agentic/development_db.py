@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import tempfile
 import time
 
@@ -29,14 +30,95 @@ def identity(root):
 
 
 def private_dir(root):
-    folder=Path(root).resolve()/'.gaston-dev-db'
-    if folder.is_symlink():raise ValueError('Refusing linked development credential directory')
+    root=Path(root).resolve()
+    gaston=root/'.gaston'
+    local=gaston/'local'
+    folder=local/'dev-db'
+    if any(p.is_symlink() for p in (gaston,local,folder)):
+        raise ValueError('Refusing linked central development credential directory')
     return folder
 
 
+def _tree_fingerprint(path):
+    if path.is_symlink():raise ValueError('Refusing linked legacy development DB directory')
+    entries=[]
+    for parent,dirs,files in os.walk(path,followlinks=False):
+        dirs.sort();files.sort();base=Path(parent)
+        for name in dirs+files:
+            item=base/name
+            if item.is_symlink():raise ValueError('Refusing symbolic link in legacy development DB directory')
+            rel=item.relative_to(path).as_posix()
+            if item.is_dir():entries.append(('dir',rel))
+            else:entries.append(('file',rel,hashlib.sha256(item.read_bytes()).hexdigest()))
+    return tuple(entries)
+
+
+def migrate_legacy_credentials(root):
+    """Move the old root-level DB directory under .gaston without losing a byte."""
+    root=Path(root).resolve()
+    legacy=root/'.gaston-dev-db'
+    if not legacy.exists() and not legacy.is_symlink():return False
+    if legacy.is_symlink() or not legacy.is_dir():
+        raise ValueError('Refusing linked or invalid legacy development DB directory')
+    if not (root/'.gaston/project.json').is_file():
+        return False
+    if os.name!='nt' and (legacy.stat().st_uid!=os.getuid() or legacy.stat().st_mode&0o077):
+        raise ValueError('Legacy development DB directory is not private; inspect before migration')
+    source_fingerprint=_tree_fingerprint(legacy)
+    folder=private_dir(root)
+    folder.mkdir(mode=0o700,parents=True,exist_ok=True)
+    if os.name!='nt':
+        os.chmod(folder,0o700)
+    else:
+        from platform_compat import protect_private_path
+        protect_private_path(folder)
+    source=legacy/'credentials.json'
+    destination=folder/'credentials.json'
+    if source.exists() or source.is_symlink():
+        if source.is_symlink() or not source.is_file():
+            raise ValueError('Refusing linked or invalid legacy development credentials')
+        if os.name!='nt' and (source.stat().st_uid!=os.getuid() or source.stat().st_mode&0o077):
+            raise ValueError('Legacy development credentials are not private; inspect before migration')
+        if destination.is_symlink():
+            raise ValueError('Refusing linked central development credentials')
+        if destination.exists():
+            if not destination.is_file() or hashlib.sha256(source.read_bytes()).digest()!=hashlib.sha256(destination.read_bytes()).digest():
+                raise ValueError('Legacy and central development credentials conflict; both copies were preserved')
+            if os.name=='nt':
+                from platform_compat import protect_private_path
+                protect_private_path(destination)
+            else:
+                os.chmod(destination,0o600)
+        else:
+            shutil.copy2(source,destination)
+            if os.name!='nt':os.chmod(destination,0o600)
+            if hashlib.sha256(source.read_bytes()).digest()!=hashlib.sha256(destination.read_bytes()).digest():
+                destination.unlink(missing_ok=True)
+                raise ValueError('Development credential migration checksum mismatch')
+        if os.name=='nt':
+            from platform_compat import protect_private_path
+            protect_private_path(destination)
+    backup=folder/'migration-backups'/'gaston-dev-db'
+    if backup.exists() or backup.is_symlink():
+        if _tree_fingerprint(backup)!=source_fingerprint:
+            raise ValueError('Existing development DB backup differs; legacy directory was preserved')
+    else:
+        backup.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copytree(legacy,backup)
+        if _tree_fingerprint(backup)!=source_fingerprint:
+            shutil.rmtree(backup)
+            raise ValueError('Development DB backup checksum mismatch')
+    # The parent dev-db directory already has a protected inheritable ACL.
+    # Do not reset ACLs on the copied backup tree; preserve owner access.
+    shutil.rmtree(legacy)
+    return True
+
+
 def credentials(root, *, create=False):
+    root=Path(root).resolve()
+    migrate_legacy_credentials(root)
     folder=private_dir(root); path=folder/'credentials.json'
-    if create:folder.mkdir(mode=0o700,exist_ok=True)
+    if create:folder.mkdir(mode=0o700,parents=True,exist_ok=True)
     if not folder.exists():return None
     if os.name=='nt':
         from platform_compat import protect_private_path
@@ -94,6 +176,7 @@ def safe_details(root,obj):
 
 def probe(root):
     """Read-only discovery; never provision/start a database from an AI tool."""
+    migrate_legacy_credentials(root)
     if not private_dir(root).exists():return {'status':'not_configured'}
     prefix=hs.local_docker()
     if not prefix or not hs.daemon_id(prefix):return {'status':'blocked','reason':'Local Docker unavailable'}

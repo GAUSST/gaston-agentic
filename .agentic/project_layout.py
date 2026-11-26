@@ -117,7 +117,7 @@ def initialize_project(start: Path, *, engine_version: str) -> tuple[Path, bool]
         raise ValueError('Refusing linked Gaston ignore policy')
     if not private_ignore.exists():
         with private_ignore.open('x', encoding='utf-8') as handle:
-            handle.write('local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\n')
+            handle.write('local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\nmigration-backups/\n')
     payload = {
         'schema': 1,
         'kind': PROJECT_MARKER_KIND,

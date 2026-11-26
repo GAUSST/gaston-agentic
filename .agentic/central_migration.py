@@ -1,8 +1,8 @@
-"""Explicit, data-preserving migration from legacy workspace Gaston to global engine.
+"""Explicit, data-preserving consolidation into the central project directory.
 
-Legacy source is never removed until the project context has been copied,
-checksummed and the new engine has passed a read-only start check. Unknown,
-modified, linked or user-owned files are never automatically removed.
+Legacy .agentic data is merged without overwriting conflicts, then archived
+inside .gaston before the scattered root directory is removed. A previously
+migrated workspace can safely finish this cleanup on a later run.
 """
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from importlib import metadata
 from project_layout import read_project_marker
 
 STATE = ("config.json", "local", "tasks", "runs", "policies/custom")
+BACKUP = Path("migration-backups/legacy-agentic")
 
 
 class MigrationError(RuntimeError):
@@ -41,37 +42,130 @@ def _assert_tree_safe(path: Path):
                     raise MigrationError("Refusing symbolic link inside project state: " + str(item))
 
 
-def _copy_state(source: Path, destination: Path) -> None:
+def _tree_fingerprint(path: Path) -> tuple:
+    _assert_tree_safe(path)
+    entries = []
+    for parent, dirs, files in os.walk(path, followlinks=False):
+        dirs.sort()
+        files.sort()
+        folder = Path(parent)
+        for name in dirs:
+            rel = (folder / name).relative_to(path).as_posix()
+            entries.append(("dir", rel))
+        for name in files:
+            item = folder / name
+            rel = item.relative_to(path).as_posix()
+            entries.append(("file", rel, _digest(item)))
+    return tuple(entries)
+
+
+def _copy_tree_verified(source: Path, destination: Path) -> None:
+    source_fingerprint = _tree_fingerprint(source)
+    if destination.exists() or destination.is_symlink():
+        if _tree_fingerprint(destination) == source_fingerprint:
+            return
+        raise MigrationError("Existing migration backup differs; refusing to overwrite: " + str(destination))
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, destination)
+    if _tree_fingerprint(destination) != source_fingerprint:
+        shutil.rmtree(destination)
+        raise MigrationError("Migration backup checksum mismatch: " + str(destination))
+
+
+def _merge_entry(source: Path, destination: Path) -> None:
+    _assert_tree_safe(source)
+    if destination.is_symlink():
+        raise MigrationError("Refusing linked central state: " + str(destination))
+    if source.is_dir():
+        if destination.exists():
+            if not destination.is_dir():
+                raise MigrationError("State path type conflict: " + str(destination))
+            for child in sorted(source.iterdir(), key=lambda p: p.name):
+                _merge_entry(child, destination / child.name)
+        else:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(source, destination)
+            if _tree_fingerprint(source) != _tree_fingerprint(destination):
+                shutil.rmtree(destination)
+                raise MigrationError("State copy checksum mismatch: " + str(source))
+        return
+    if not source.is_file():
+        raise MigrationError("Unsupported legacy state entry: " + str(source))
+    if destination.exists():
+        if not destination.is_file() or _digest(source) != _digest(destination):
+            raise MigrationError("Conflicting project state; both copies were preserved: " + str(destination))
+        return
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    if _digest(source) != _digest(destination):
+        destination.unlink(missing_ok=True)
+        raise MigrationError("State copy checksum mismatch: " + str(source))
+
+
+def _check_state_merge(source: Path, destination: Path) -> None:
     for rel in STATE:
         old = source / rel
-        if not old.exists():
+        if not old.exists() and not old.is_symlink():
             continue
         _assert_tree_safe(old)
         new = destination / rel
-        new.parent.mkdir(parents=True, exist_ok=True)
+        if new.is_symlink():
+            raise MigrationError("Refusing linked central state: " + str(new))
         if old.is_dir():
-            shutil.copytree(old, new, symlinks=False)
-            for item in old.rglob("*"):
-                if item.is_file() and _digest(item) != _digest(new / item.relative_to(old)):
-                    raise MigrationError("Context copy checksum mismatch: " + rel)
-        elif old.is_file():
-            shutil.copy2(old, new)
-            if _digest(old) != _digest(new):
-                raise MigrationError("Context copy checksum mismatch: " + rel)
-        else:
-            raise MigrationError("Unknown project data type: " + rel)
+            if new.exists() and not new.is_dir():
+                raise MigrationError("State path type conflict: " + str(new))
+            if new.exists():
+                _check_merge_tree(old, new)
+        elif old.is_file() and new.exists():
+            if not new.is_file() or _digest(old) != _digest(new):
+                raise MigrationError("Conflicting project state; both copies were preserved: " + str(new))
+        elif not old.is_file():
+            raise MigrationError("Unsupported legacy state entry: " + str(old))
+
+
+def _check_merge_tree(source: Path, destination: Path) -> None:
+    _assert_tree_safe(source)
+    _assert_tree_safe(destination)
+    for child in source.iterdir():
+        other = destination / child.name
+        if other.is_symlink():
+            raise MigrationError("Refusing linked central state: " + str(other))
+        if child.is_dir():
+            if other.exists() and not other.is_dir():
+                raise MigrationError("State path type conflict: " + str(other))
+            if other.exists():
+                _check_merge_tree(child, other)
+        elif child.is_file() and other.exists():
+            if not other.is_file() or _digest(child) != _digest(other):
+                raise MigrationError("Conflicting project state; both copies were preserved: " + str(other))
+
+
+def _merge_state(source: Path, destination: Path) -> None:
+    for rel in STATE:
+        old = source / rel
+        if old.exists() or old.is_symlink():
+            _merge_entry(old, destination / rel)
+
+
+def _read_manifest(old: Path) -> dict:
+    path = old / "manifest.json"
+    if old.is_symlink() or not old.is_dir() or path.is_symlink() or not path.is_file():
+        raise MigrationError("Not a verified legacy Gaston workspace")
+    try:
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise MigrationError("Invalid legacy workspace manifest") from exc
+    files = manifest.get("files") if isinstance(manifest, dict) else None
+    version = manifest.get("build") if isinstance(manifest, dict) else None
+    if (not isinstance(files, dict) or not isinstance(version, str)
+            or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version)):
+        raise MigrationError("Unsupported legacy Gaston release manifest")
+    return manifest
 
 
 def _legacy_owned_sources(root: Path, manifest: dict) -> list[Path]:
     old = root / ".agentic"
-    if old.is_symlink() or not old.is_dir():
-        raise MigrationError("Missing or linked legacy Gaston workspace")
     files = manifest.get("files")
-    if not isinstance(files, dict):
-        raise MigrationError("Legacy manifest is invalid")
-    legacy_version = manifest.get("build")
-    if not isinstance(legacy_version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", legacy_version):
-        raise MigrationError("Unsupported legacy Gaston release manifest")
     from project_layout import runtime_script
     selected = []
     for rel, expected in files.items():
@@ -87,14 +181,12 @@ def _legacy_owned_sources(root: Path, manifest: dict) -> list[Path]:
         else:
             continue
         original = root / rel
-        if (original.is_symlink() or not original.is_file() or
-                not isinstance(expected, str) or not re.fullmatch(r"[a-f0-9]{64}", expected)):
+        if (original.is_symlink() or not original.is_file()
+                or not isinstance(expected, str)
+                or not re.fullmatch(r"[a-f0-9]{64}", expected)):
             raise MigrationError("Legacy engine source is missing or linked: " + rel)
         if _digest(original) != expected:
             raise MigrationError("Modified Gaston engine file; migration leaves it untouched: " + rel)
-        # Source removal is restricted to known installed engine module names.
-        # Older signed legacy builds legitimately differ from the current
-        # installed release. Their own manifest hash must still match the file.
         if not installed.is_file():
             raise MigrationError("Unrecognized legacy toolkit module: " + rel)
         selected.append(original)
@@ -104,98 +196,215 @@ def _legacy_owned_sources(root: Path, manifest: dict) -> list[Path]:
 
 
 def _active(root: Path) -> bool:
-    for rel in ("local/locks", "local/native-hooks/active", "local/native-hooks/feedback-worker.lock"):
-        path = root / ".agentic" / rel
-        if path.is_symlink() or (path.is_file()) or (path.is_dir() and any(path.iterdir())):
-            return True
+    for state in (root / ".agentic", root / ".gaston"):
+        for rel in ("local/locks", "local/native-hooks/active",
+                    "local/native-hooks/feedback-worker.lock"):
+            path = state / rel
+            if path.is_symlink() or path.is_file() or (path.is_dir() and any(path.iterdir())):
+                return True
     return False
 
 
-def migrate(root: Path, *, confirmation=input, output=print) -> bool:
+def _ensure_backup_ignore(target: Path) -> None:
+    path = target / ".gitignore"
+    if path.is_symlink():
+        raise MigrationError("Refusing linked Gaston ignore policy")
+    if not path.exists():
+        path.write_text("local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\nmigration-backups/\n",
+                        encoding="utf-8")
+        return
+    current = path.read_text(encoding="utf-8")
+    if "migration-backups/" not in current.splitlines():
+        path.write_text(current.rstrip("\n") + "\nmigration-backups/\n", encoding="utf-8")
+
+
+def _archive_legacy(old: Path, target: Path) -> Path:
+    backup = target / BACKUP
+    _copy_tree_verified(old, backup)
+    return backup
+
+
+def _smoke_test(root: Path) -> None:
+    environment = os.environ.copy()
+    environment.update(GASTON_ENGINE_MODE="central", GASTON_ENGINE_PROJECT=str(root))
+    engine = Path(__file__).resolve().parent / "eng.py"
+    result = subprocess.run([sys.executable, str(engine), "--help"],
+                            cwd=root, env=environment, capture_output=True,
+                            text=True, timeout=30)
+    if result.returncode != 0 or "Commands:" not in result.stdout:
+        raise MigrationError("Installed central engine failed verification: " + result.stderr[:400])
+    if _active(root):
+        raise MigrationError("Managed session became active during migration")
+
+
+def _write_marker(target: Path, marker: dict) -> None:
+    path = target / "project.json"
+    if path.is_symlink():
+        raise MigrationError("Refusing linked Gaston project marker")
+    marker = dict(marker)
+    marker["migrated_from"] = "legacy"
+    temp = target / ".project-migration.tmp"
+    if temp.is_symlink():
+        raise MigrationError("Refusing linked migration marker temporary file")
+    temp.write_text(json.dumps(marker, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(temp, path)
+
+
+def _move_legacy_dev_db(root: Path) -> bool:
+    # The DB module owns credential validation and its legacy-path migration.
+    try:
+        import development_db
+        return bool(development_db.migrate_legacy_credentials(root))
+    except ImportError:
+        if (root / ".gaston-dev-db").exists() or (root / ".gaston-dev-db").is_symlink():
+            raise MigrationError("Development DB migration helper is unavailable; legacy credentials were left untouched")
+        return False
+
+
+def _remove_archived_legacy(old: Path, backup: Path) -> None:
+    if not old.exists():
+        return
+    if _tree_fingerprint(old) != _tree_fingerprint(backup):
+        raise MigrationError("Legacy directory changed after backup; both copies were preserved")
+    shutil.rmtree(old)
+
+
+def _is_gaston_source_checkout(root: Path) -> bool:
+    """The source repository's .agentic is distributable Python code, not legacy project state."""
+    pyproject = root / "pyproject.toml"
+    manifest = root / ".agentic" / "manifest.json"
+    cli = root / "gaston_cli.py"
+    workflow = root / ".github" / "workflows" / "native-cli-validation.yml"
+    if any(path.is_symlink() for path in (pyproject, manifest, cli, workflow)):
+        return False
+    if not all(path.is_file() for path in (pyproject, manifest, cli, workflow)):
+        return False
+    try:
+        project = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return bool(re.search(r'(?m)^name\s*=\s*["\']gaston-agentic-cli["\']\s*$', project))
+
+
+def migrate(root: Path, *, confirmation=input, output=print):
     root = Path(root).resolve()
     old = root / ".agentic"
     target = root / ".gaston"
-    if target.exists() or target.is_symlink():
+    if _is_gaston_source_checkout(root):
+        if not (target.exists() or target.is_symlink()):
+            output("Gaston source checkout detected. .agentic/ is tracked engine source and will not be moved.")
+            output("Run dev init to create the .gaston project adapter; do not migrate the source package.")
+            return False
         read_project_marker(root)
-        output("Central project adapter already exists; context was not modified.")
-        return False
-    if not (old / "launcher.py").is_file() or (old / "manifest.json").is_symlink():
-        raise MigrationError("Not a verified legacy Gaston workspace")
+        legacy_db = root / ".gaston-dev-db"
+        if not legacy_db.exists() and not legacy_db.is_symlink():
+            output("Gaston source checkout detected. .agentic/ is tracked engine source and remains in place.")
+            output("No legacy development DB directory needs migration.")
+            return False
+        if _active(root):
+            raise MigrationError("Close all Gaston sessions and managed workers before migration")
+        output("GASTON SOURCE CHECKOUT — DEVELOPMENT DB CONSOLIDATION")
+        output("  .agentic/ is the tracked Python engine package and will remain untouched.")
+        output("  Only .gaston-dev-db/ will move under .gaston/local/dev-db/.")
+        if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+            output("Migration cancelled; no files changed.")
+            return False
+        moved = _move_legacy_dev_db(root)
+        output("Development DB directory consolidated under .gaston/local/dev-db." if moved
+               else "No legacy development DB files needed moving.")
+        return moved
+    if not old.exists() and not old.is_symlink():
+        if target.exists():
+            read_project_marker(root)
+            legacy_db = root / ".gaston-dev-db"
+            if legacy_db.exists() or legacy_db.is_symlink():
+                if _active(root):
+                    raise MigrationError("Close all Gaston sessions and managed workers before migration")
+                output("GASTON CENTRAL — DEVELOPMENT DB DIRECTORY MIGRATION")
+                output("  Credentials and any unknown files will be preserved under .gaston/local/dev-db/.")
+                if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+                    output("Migration cancelled; no files changed.")
+                    return False
+                moved = _move_legacy_dev_db(root)
+                output("Development DB directory consolidated under .gaston/local/dev-db." if moved
+                       else "No legacy development DB files needed moving.")
+                return moved
+            output("Gaston project is already consolidated.")
+            return False
+        raise MigrationError("No legacy .agentic directory found")
+    _assert_tree_safe(old)
     if _active(root):
         raise MigrationError("Close all Gaston sessions and managed workers before migration")
-    try:
-        manifest = json.loads((old / "manifest.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise MigrationError("Invalid legacy workspace manifest") from exc
-    to_remove = _legacy_owned_sources(root, manifest)
-    output("GASTON CENTRAL — LEGACY WORKSPACE MIGRATION")
+
+    target_exists = target.exists() or target.is_symlink()
+    if target_exists:
+        marker = read_project_marker(root)
+        already_migrated = marker.get("migrated_from") == "legacy"
+        if not already_migrated:
+            manifest = _read_manifest(old)
+            if (old / "launcher.py").is_file():
+                _legacy_owned_sources(root, manifest)
+            # A partially completed prior migration may already have removed
+            # the launcher. Its entire source tree is preserved in the archive.
+            _check_state_merge(old, target)
+    else:
+        manifest = _read_manifest(old)
+        _legacy_owned_sources(root, manifest)
+
+    output("GASTON CENTRAL — PROJECT CONSOLIDATION")
     output("  Project: " + str(root))
-    output("  Durable state locations preserved: " + ", ".join(STATE))
-    output("  Verified engine files to remove after smoke test: " + str(len(to_remove)))
-    output("  Existing application source, Git, root documents and unknown files are untouched.")
-    output("  Legacy state remains as a local compatibility backup until explicitly removed.")
+    output("  Canonical project state: .gaston/")
+    output("  Legacy .agentic data will be preserved under .gaston/migration-backups/legacy-agentic/")
+    output("  Existing central files are never overwritten; conflicting state stops the operation.")
+    output("  Optional development DB credentials will move under .gaston/local/dev-db/.")
+    output("  Provider-native .claude and .codex hook entrypoints are not moved.")
     if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
         output("Migration cancelled; no files changed.")
         return False
-    # Preflight again after confirmation, before the first filesystem mutation.
-    if target.exists() or _active(root):
+
+    if _active(root):
         raise MigrationError("Project state changed during confirmation")
-    selected = _legacy_owned_sources(root, manifest)
-    if selected != to_remove:
-        raise MigrationError("Legacy toolkit changed; migration cancelled")
-    staging = Path(tempfile.mkdtemp(prefix=".gaston-migration-", dir=root))
-    published = False
-    try:
-        _copy_state(old, staging)
-        marker = {
-            "schema":1, "kind":"gaston-project", "engine":"gaston-agentic-cli",
-            "created_with":metadata.version("gaston-agentic-cli"),
-            "migrated_from":"legacy"
-        }
-        (staging / "project.json").write_text(json.dumps(marker, indent=2) + "\n", encoding="utf-8")
-        (staging / ".gitignore").write_text(
-            "local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\n",
-            encoding="utf-8")
-        os.replace(staging, target)
-        published = True
-        environment = os.environ.copy()
-        environment.update(GASTON_ENGINE_MODE="central", GASTON_ENGINE_PROJECT=str(root))
-        engine = Path(__file__).resolve().parent / "eng.py"
-        # This probes installed entrypoint without running provider setup or tasks.
-        result = subprocess.run([sys.executable, str(engine), "--help"],
-                                cwd=root, env=environment, capture_output=True,
-                                text=True, timeout=30)
-        if result.returncode != 0 or "Commands:" not in result.stdout:
-            raise MigrationError("Installed central engine failed verification: " + result.stderr[:400])
-        if _active(root):
-            raise MigrationError("Managed session became active during migration")
-        originals = [(p, p.read_bytes(), p.stat().st_mode) for p in selected]
+    _assert_tree_safe(old)
+    if target_exists:
+        read_project_marker(root)
+        if not already_migrated:
+            _check_state_merge(old, target)
+            _merge_state(old, target)
+        _ensure_backup_ignore(target)
+        backup = _archive_legacy(old, target)
+        _move_legacy_dev_db(root)
+        _smoke_test(root)
+        if not already_migrated:
+            marker = read_project_marker(root)
+            _write_marker(target, marker)
+        _remove_archived_legacy(old, backup)
+    else:
+        staging = Path(tempfile.mkdtemp(prefix=".gaston-migration-", dir=root))
         try:
-            for file, original, _mode in originals:
-                # No deletion without final ownership recheck.
-                if file.is_file() and _digest(file) == manifest["files"][file.relative_to(root).as_posix()]:
-                    file.unlink()
-                else:
-                    raise MigrationError("Legacy toolkit was modified; manual recovery required")
-        except BaseException:
-            # A partial filesystem failure restores the old engine, allowing
-            # the outer guard to discard the not-yet-committed adapter.
-            for file, original, mode in originals:
-                if not file.exists():
-                    file.parent.mkdir(parents=True, exist_ok=True)
-                    file.write_bytes(original)
-                    os.chmod(file, mode)
-            raise
-        output("Central engine migration completed. Original project context preserved.")
-        return True
-    except BaseException:
-        # Never discard the copied context if source removal has started.
-        if published and all(p.is_file() for p in to_remove) and target.exists():
-            shutil.rmtree(target)
-        raise
-    finally:
-        if staging.exists():
-            shutil.rmtree(staging)
+            _merge_state(old, staging)
+            marker = {
+                "schema": 1, "kind": "gaston-project",
+                "engine": "gaston-agentic-cli",
+                "created_with": metadata.version("gaston-agentic-cli"),
+                "migrated_from": "legacy"
+            }
+            (staging / "project.json").write_text(
+                json.dumps(marker, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            (staging / ".gitignore").write_text(
+                "local/\nruns/\ntasks/\nconfig.json\npolicies/custom/\nmigration-backups/\n",
+                encoding="utf-8")
+            _archive_legacy(old, staging)
+            os.replace(staging, target)
+        finally:
+            if staging.exists():
+                shutil.rmtree(staging)
+        _move_legacy_dev_db(root)
+        _smoke_test(root)
+        backup = target / BACKUP
+        _remove_archived_legacy(old, backup)
+
+    output("Consolidation completed. Legacy project files are archived inside .gaston; root-level .agentic was removed.")
+    return True
 
 
 def main(root: Path) -> int:
