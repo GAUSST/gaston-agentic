@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from importlib import metadata
 import hashlib
+import io
+from contextlib import redirect_stdout
 import json
 import os
 from pathlib import Path
@@ -99,7 +101,13 @@ class CentralUpdaterTests(unittest.TestCase):
                  patch("updater._download", return_value=b"archive"), \
                  patch("updater._validate_candidate", return_value=(manifest,payload)), \
                  patch("central_migration.migrate") as migration:
-                self.assertEqual(central_update.command([], confirm=confirm), 0)
+                # Simulate redirected Windows stdout on every OS. Strict
+                # encoding catches unsupported CLI glyphs before activation.
+                with io.TextIOWrapper(io.BytesIO(), encoding="cp1252", errors="strict") as console:
+                    with redirect_stdout(console):
+                        self.assertEqual(central_update.command([], confirm=confirm), 0)
+                    console.flush()
+                    self.assertIn(b" to v7.8.9", console.buffer.getvalue())
                 migration.assert_not_called()
             self.assertEqual(len(prompts), 1)
             self.assertIn("[default: Yes]", prompts[0])

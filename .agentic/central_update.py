@@ -237,7 +237,7 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
         tag = release["tag"]
         newer = version(tag) > version(current)
         if newer:
-            output("Gaston update available: " + current + " → " + tag)
+            output("Gaston update available: " + current + " to " + tag)
             commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
             archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
             manifest, payload = _validate_candidate(archive, tag)
