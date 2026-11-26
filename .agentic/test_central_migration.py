@@ -40,6 +40,7 @@ class CentralMigrationTests(unittest.TestCase):
         self.context.write_text("History and decisions\n", encoding="utf-8")
         self.settings = old / "config.json"
         self.settings.write_text(json.dumps({"preferences":{"builder":"codex","reviewer":"claude"}}))
+        self.settings_bytes = self.settings.read_bytes()
         self.env = os.environ.copy()
         for key in ("GASTON_ROOT", "GASTON_ENGINE_MODE", "GASTON_ENGINE_PROJECT",
                     "GASTON_ACTIVE_VERSION"):
@@ -62,7 +63,7 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertFalse((self.root / ".agentic").exists())
         self.assertEqual((backup / "local/PROJECT_CONTEXT.md").read_text(),
                          "History and decisions\n")
-        self.assertEqual((backup / "config.json").read_bytes(), self.settings.read_bytes())
+        self.assertEqual((backup / "config.json").read_bytes(), self.settings_bytes)
         self.assertTrue((backup / "manifest.json").is_file())
         self.assertTrue((backup / "eng.py").is_file())
         self.assertEqual(self.project_file.read_text(), "print('mine')\n")
