@@ -92,14 +92,14 @@
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "74c0cf9637ce25db9a8a3f965c4716bf77e8b20257771fc040229130bf72a064",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
-    "README.md": "1906c9765b888f7fd2a3351d37e3601258b516ec9e9497fe4eb84cd928b50eca",
+    "README.md": "c1c4847da10b6ad9b8eed9159686ef76c018502524806221ffcf91fed6977c11",
     "dev": "eec031ce960b52320471253945405320753dc3894b42122e206a599244f125b0",
     "docs/BACKEND_VERIFICATION.md": "2b6bf8a1f47ef66006bd554c528b58c3e2baf8ede1996f1a010d7358eb2627a4",
     "docs/LEAD_WORKSPACE_OPERATIONS.md": "f993b041a55d6bfde81add7b1e20a896f37fc2d63c5ed9216e85f170c6c9ea35",
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
     "gaston_cli.py": "b9f17ab554a1af8c36638acd4ea453db444d6698b98e734211414d865da52c9c",
-    "pyproject.toml": "4759bcddc9754a7d6372b809811de05f8da7cfd164dbbba2cfc1aec32e0fb0ae",
+    "pyproject.toml": "47916369f355fa69817008fe375d94583b579f967078087567612acf0a43b954",
     ".agentic/updater.py": "56048086d55bc2564913c5cd9f67a85bb292e11825b029ddaac2db09a738e9d7",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
@@ -135,5 +135,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.6.8"
+  "build": "1.6.9"
 }
