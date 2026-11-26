@@ -250,14 +250,15 @@ def _write_marker(target: Path, marker: dict) -> None:
     os.replace(temp, path)
 
 
-def _move_legacy_dev_db(root: Path) -> None:
+def _move_legacy_dev_db(root: Path) -> bool:
     # The DB module owns credential validation and its legacy-path migration.
     try:
         import development_db
-        development_db.migrate_legacy_credentials(root)
+        return bool(development_db.migrate_legacy_credentials(root))
     except ImportError:
-        if (root / ".gaston-dev-db").exists():
+        if (root / ".gaston-dev-db").exists() or (root / ".gaston-dev-db").is_symlink():
             raise MigrationError("Development DB migration helper is unavailable; legacy credentials were left untouched")
+        return False
 
 
 def _remove_archived_legacy(old: Path, backup: Path) -> None:
@@ -275,6 +276,19 @@ def migrate(root: Path, *, confirmation=input, output=print) -> bool:
     if not old.exists() and not old.is_symlink():
         if target.exists():
             read_project_marker(root)
+            legacy_db = root / ".gaston-dev-db"
+            if legacy_db.exists() or legacy_db.is_symlink():
+                if _active(root):
+                    raise MigrationError("Close all Gaston sessions and managed workers before migration")
+                output("GASTON CENTRAL — DEVELOPMENT DB DIRECTORY MIGRATION")
+                output("  Credentials and any unknown files will be preserved under .gaston/local/dev-db/.")
+                if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+                    output("Migration cancelled; no files changed.")
+                    return False
+                moved = _move_legacy_dev_db(root)
+                output("Development DB directory consolidated under .gaston/local/dev-db." if moved
+                       else "No legacy development DB files needed moving.")
+                return moved
             output("Gaston project is already consolidated.")
             return False
         raise MigrationError("No legacy .agentic directory found")

@@ -3,8 +3,9 @@
 ## Architecture
 
 - **Global engine:** Gaston's Python engine and native `dev` CLI are installed once through the `gaston-agentic-cli` distribution. Runtime modules, internal tests and release workflows are not copied into application projects.
-- **Project adapter:** `.gaston/project.json` identifies the project. Other project-owned state stays under `.gaston/` (configuration, history, tasks, runs, evidence, custom policies and enrolled sessions). Sensitive state has a scoped `.gaston/.gitignore`; project-owned `.gaston/context` documents may be versioned at the developer's discretion.
-- **Legacy compatibility:** projects still containing an original `.agentic/launcher.py` continue to run the old engine until the developer explicitly migrates them. Automatic initialization never deletes old sources or project documents.
+- **Project adapter:** `.gaston/project.json` identifies the project. Gaston-owned project state stays under `.gaston/` (configuration, history, tasks, runs, evidence, custom policies, enrolled sessions, optional development DB credentials and migration backups). Sensitive state is covered by `.gaston/.gitignore`; project-owned `.gaston/context` documents may be versioned at the developer's discretion.
+- **Provider adapters:** `.claude/settings.local.json` and `.codex/hooks.json` remain at the standard discovery paths required by Claude Code and Codex. They contain only provider-native hook registrations pointing to the globally installed engine; they are not a second copy of Gaston's runtime or project state. Optional `.serena/` metadata is generated/owned by Serena itself.
+- **Legacy compatibility and consolidation:** `dev migrate` works for both an unmigrated legacy workspace and a project that already has `.gaston/project.json` but still contains old root-level files. It merges missing state without overwriting conflicts, archives the complete old `.agentic/` tree inside `.gaston/migration-backups/legacy-agentic/`, moves `.gaston-dev-db/` under `.gaston/local/dev-db/`, verifies copies and the central engine, then removes the old root-level folders. Conflicts, links or active sessions stop the operation without deleting the source.
 - **Update ownership:** signed releases update the versioned global engine store, never an application repository. The installed native CLI is a stable loader; new engine versions are activated through an atomic pointer, and earlier managed versions remain available for rollback.
 - **Uninstall ownership:** `dev uninstall` removes the project adapter and preserves context by default. The separately confirmed **Erase** option removes only `.gaston/`, not application code, existing `.agentic` backup data or the global CLI.
 
@@ -31,7 +32,9 @@ dev update --rollback   # Explicit version rollback
 dev uninstall           # Keep Context (default) or confirmed Full Erase
 ```
 
-Migration copies local context with checksum verification, verifies the centrally installed entrypoint, then removes only original engine sources whose hashes match the legacy manifest and whose module filenames are recognized by the installed toolkit. Original local data remains as a compatibility backup. Unrecognized, modified, linked, or application-owned files are never deleted automatically. An unsuccessful migration must leave original history available; migration cannot proceed while managed sessions appear active.
+Migration verifies the legacy manifest and engine sources, merges project state without overwriting conflicting files, and archives the complete original `.agentic/` directory under `.gaston/migration-backups/legacy-agentic/`. The archive is checksummed before the root-level directory is removed. Optional DB credentials move to `.gaston/local/dev-db/credentials.json`, with the original directory preserved in a nested migration backup. Unrecognized, modified, linked, conflicting or application-owned data is never discarded. An unsuccessful migration leaves the original source available; migration cannot proceed while managed sessions appear active.
+
+If `.gaston/project.json` already exists, `dev migrate` is still the correct consolidation command. It detects a previously migrated workspace and safely finishes archiving the leftover `.agentic/` directory. `dev uninstall` with **Keep** is not a cleanup or migration operation; it preserves the project data.
 
 ## Release blockers / mandatory verification
 

@@ -58,13 +58,101 @@ class CentralMigrationTests(unittest.TestCase):
                          "History and decisions\n")
         self.assertEqual((self.root / ".gaston/config.json").read_bytes(),
                          self.settings.read_bytes())
-        self.assertEqual(self.context.read_text(), "History and decisions\n")
-        self.assertFalse((self.root / ".agentic/eng.py").exists())
-        self.assertFalse((self.root / ".agentic/launcher.py").exists())
+        backup = self.root / ".gaston/migration-backups/legacy-agentic"
+        self.assertFalse((self.root / ".agentic").exists())
+        self.assertEqual((backup / "local/PROJECT_CONTEXT.md").read_text(),
+                         "History and decisions\n")
+        self.assertEqual((backup / "config.json").read_bytes(), self.settings.read_bytes())
+        self.assertTrue((backup / "manifest.json").is_file())
+        self.assertTrue((backup / "eng.py").is_file())
         self.assertEqual(self.project_file.read_text(), "print('mine')\n")
         ready = self.dev("", "--help")
         self.assertEqual(ready.returncode, 0, ready.stdout + ready.stderr)
-        self.assertFalse((self.root / ".agentic/eng.py").exists())
+        self.assertFalse((self.root / ".agentic").exists())
+
+    def test_existing_central_project_archives_legacy_backup_and_removes_root_folder(self):
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project",
+            "engine": "gaston-agentic-cli", "created_with": "1.6.10",
+            "migrated_from": "legacy"
+        }), encoding="utf-8")
+        (central / ".gitignore").write_text("local/\n", encoding="utf-8")
+        current = central / "local" / "CURRENT_CONTEXT.md"
+        current.parent.mkdir(parents=True)
+        current.write_text("New central state stays intact\n", encoding="utf-8")
+        # Simulate v1.6.10's leftover compatibility directory after its first migration.
+        (self.root / ".agentic/local/PROJECT_CONTEXT.md").write_text(
+            "Legacy backup\n", encoding="utf-8")
+        result = self.dev("MIGRATE GASTON\n", "migrate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((self.root / ".agentic").exists())
+        self.assertEqual(current.read_text(), "New central state stays intact\n")
+        self.assertEqual((central / "migration-backups/legacy-agentic/local/PROJECT_CONTEXT.md").read_text(),
+                         "Legacy backup\n")
+        self.assertIn("migration-backups/", (central / ".gitignore").read_text())
+
+    def test_existing_central_conflict_stops_without_overwriting_either_copy(self):
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project",
+            "engine": "gaston-agentic-cli", "created_with": "1.6.10"
+        }), encoding="utf-8")
+        (central / "config.json").write_text('{"central":"keep"}\n', encoding="utf-8")
+        result = self.dev("MIGRATE GASTON\n", "migrate")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Conflicting project state", result.stderr)
+        self.assertEqual((central / "config.json").read_text(), '{"central":"keep"}\n')
+        self.assertEqual(self.settings.read_bytes(), (self.root / ".agentic/config.json").read_bytes())
+        self.assertTrue((self.root / ".agentic/launcher.py").is_file())
+
+    def test_legacy_development_db_moves_under_central_state_with_backup(self):
+        folder = self.root / ".gaston-dev-db"
+        folder.mkdir(mode=0o700)
+        workspace = hashlib.sha256(str(self.root).encode()).hexdigest()[:20]
+        credentials = {
+            "workspace": workspace,
+            "admin_password": "a" * 48,
+            "development_password": "b" * 48,
+            "readonly_password": "c" * 48
+        }
+        source = folder / "credentials.json"
+        source.write_text(json.dumps(credentials), encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(folder, 0o700)
+            os.chmod(source, 0o600)
+        result = self.dev("MIGRATE GASTON\n", "migrate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        destination = self.root / ".gaston/local/dev-db/credentials.json"
+        self.assertEqual(json.loads(destination.read_text()), credentials)
+        self.assertFalse(folder.exists())
+        backup = self.root / ".gaston/local/dev-db/migration-backups/gaston-dev-db/credentials.json"
+        self.assertEqual(json.loads(backup.read_text()), credentials)
+
+    def test_dev_db_only_cleanup_works_on_already_central_project(self):
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project",
+            "engine": "gaston-agentic-cli", "created_with": "1.6.10"
+        }), encoding="utf-8")
+        folder = self.root / ".gaston-dev-db"
+        folder.mkdir(mode=0o700)
+        workspace = hashlib.sha256(str(self.root).encode()).hexdigest()[:20]
+        source = folder / "credentials.json"
+        source.write_text(json.dumps({
+            "workspace": workspace, "admin_password": "a" * 48,
+            "development_password": "b" * 48, "readonly_password": "c" * 48
+        }), encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(folder, 0o700)
+            os.chmod(source, 0o600)
+        result = self.dev("MIGRATE GASTON\n", "migrate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(folder.exists())
+        self.assertTrue((central / "local/dev-db/credentials.json").is_file())
 
     def test_cancel_is_nondestructive(self):
         result = self.dev("not now\n", "migrate")

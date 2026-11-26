@@ -245,7 +245,7 @@ def main():
             if kind == 'new' and arguments == ['init']:
                 return _central_init()
             if kind == 'central' and arguments == ['migrate'] and (
-                    (root/'.agentic').exists() or (root/'.gaston-dev-db').exists()):
+                    (root/'.agentic').exists() or (root/'.gaston-dev-db').exists() or (root/'.gaston-dev-db').is_symlink()):
                 return _central_migrate(root)
             if kind == 'central':
                 if arguments == ['init']:
