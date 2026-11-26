@@ -1465,6 +1465,8 @@ def _sync_lead_build(folder):
     prior=orch.read_record(folder/'build.json')
     if prior:
         merged=orch.merge_lead_paths(folder,prior)
+        if not orch.lead_paths(folder) and 'lead_changed_files' not in prior:
+            merged.pop('lead_changed_files',None)
         if merged!=prior and not any(x['task_id']==folder.name for x in orch.active_builders(ROOT)):
             orch.put(folder/'build.json',merged)
     return orch.read_record(folder/'build.json')
