@@ -20,6 +20,7 @@ from pathlib import Path, PurePosixPath
 import re
 import secrets
 import shutil
+import ssl
 import subprocess
 import sys
 import tempfile
@@ -126,9 +127,97 @@ def _github_url(repository: str, suffix: str) -> str:
     return 'https://api.github.com/repos/' + repository + '/' + suffix
 
 
+def _github_download_url(url: str, *, initial=False) -> None:
+    """Permit only exact GitHub HTTPS hosts, including before a redirect."""
+    allowed = ('api.github.com',) if initial else ('api.github.com', 'codeload.github.com')
+    parsed = urlsplit(url)
+    if (parsed.scheme != 'https' or parsed.netloc.lower() not in allowed
+            or any(ord(c) <= 32 or ord(c) == 127 for c in url)
+            or '\\' in url):
+        raise UpdateError('Only trusted GitHub HTTPS endpoints are allowed')
+
+
+def _windows_system_curl() -> Path:
+    """Use the OS-supplied executable, never curl from a project or PATH."""
+    import ctypes
+    from ctypes import wintypes
+    get_directory = ctypes.WinDLL('kernel32', use_last_error=True).GetSystemDirectoryW
+    get_directory.argtypes = [wintypes.LPWSTR, wintypes.UINT]
+    get_directory.restype = wintypes.UINT
+    buf = ctypes.create_unicode_buffer(32768)
+    length = get_directory(buf, len(buf))
+    if not length or length >= len(buf):
+        raise UpdateError('Cannot locate the Windows system directory')
+    curl = Path(buf.value) / 'curl.exe'
+    if not curl.is_file():
+        raise UpdateError('Windows system curl.exe is unavailable')
+    return curl
+
+
+def _download_windows_native(url: str, limit: int) -> bytes:
+    """Retry certificate-chain failures with Windows' native HTTPS transport.
+
+    No user curl config, certificate override, insecure flag, PATH lookup or
+    automatic redirects. Every redirect is checked before requesting it.
+    The caller still performs all signed tag and archive verification.
+    """
+    _github_download_url(url, initial=True)
+    curl = _windows_system_curl()
+    env = dict(os.environ)
+    for name in ('CURL_CA_BUNDLE', 'SSL_CERT_FILE', 'SSL_CERT_DIR', 'SSLKEYLOGFILE'):
+        env.pop(name, None)
+    deadline = time.monotonic() + 30
+    with tempfile.TemporaryDirectory(prefix='gaston-https-') as directory:
+        body = Path(directory) / 'body'
+        for _ in range(4):
+            _github_download_url(url)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise UpdateError('Windows GitHub download timed out')
+            command = [
+                str(curl), '--disable', '--silent', '--show-error', '--globoff',
+                '--proto', '=https', '--connect-timeout', '10',
+                '--max-time', str(max(1, int(remaining))),
+                '--max-filesize', str(limit), '--output', str(body),
+                '--write-out', '%{http_code}\n%{redirect_url}',
+                '--header', 'Accept: application/vnd.github+json',
+                '--header', 'X-GitHub-Api-Version: 2022-11-28',
+                '--user-agent', AGENT, '--url', url,
+            ]
+            try:
+                result = subprocess.run(
+                    command, cwd=directory, env=env, stdin=subprocess.DEVNULL,
+                    capture_output=True, timeout=remaining + 1, check=False,
+                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0),
+                )
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                raise UpdateError('Windows native GitHub download failed: ' + str(exc)) from exc
+            if result.returncode == 63 or (body.exists() and body.stat().st_size > limit):
+                raise UpdateError('GitHub response exceeded size limit')
+            if result.returncode != 0:
+                # Avoid printing proxy credentials or arbitrary remote output.
+                raise UpdateError('Windows native GitHub HTTPS failed (curl exit '
+                                  + str(result.returncode) + ')')
+            fields = result.stdout.decode('utf-8', errors='strict').split('\n', 1)
+            if len(fields) != 2 or not re.fullmatch(r'[0-9]{3}', fields[0]):
+                raise UpdateError('Invalid Windows GitHub HTTP response')
+            status, redirect = int(fields[0]), fields[1]
+            if status in (301, 302, 303, 307, 308):
+                _github_download_url(redirect)
+                url = redirect
+                continue
+            if status != 200 or not body.is_file():
+                raise UpdateError('Windows GitHub endpoint returned HTTP ' + str(status))
+            with body.open('rb') as stream:
+                payload = stream.read(limit + 1)
+            if len(payload) > limit:
+                raise UpdateError('GitHub response exceeded size limit')
+            return payload
+    raise UpdateError('Too many GitHub redirects')
+
+
 def _download(url: str, limit: int) -> bytes:
-    if urlsplit(url).scheme != 'https' or urlsplit(url).hostname != 'api.github.com':
-        raise UpdateError('Only the GitHub HTTPS API is allowed')
+    _github_download_url(url, initial=True)
     req = Request(url, headers={'Accept': 'application/vnd.github+json', 'User-Agent': AGENT,
                                 'X-GitHub-Api-Version': '2022-11-28'})
     try:
@@ -143,7 +232,10 @@ def _download(url: str, limit: int) -> bytes:
             if len(payload) > limit:
                 raise UpdateError('GitHub response exceeded size limit')
             return payload
-    except (HTTPError, URLError, TimeoutError) as exc:
+    except (HTTPError, URLError, TimeoutError, ssl.SSLCertVerificationError) as exc:
+        reason = exc.reason if isinstance(exc, URLError) else exc
+        if os.name == 'nt' and isinstance(reason, ssl.SSLCertVerificationError):
+            return _download_windows_native(url, limit)
         raise UpdateError(f'Could not reach trusted GitHub release endpoint: {exc}') from exc
 
 
