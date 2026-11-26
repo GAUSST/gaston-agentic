@@ -222,7 +222,17 @@ def claim_worker(root, folder, attempt):
         if launch.get('attempt') != attempt or state.get('stage') != 'queued_for_builder':
             return False
         if worker.get('attempt') == attempt and worker.get('pid') != os.getpid():
-            return False
+            # On Windows the venv python.exe is a redirector: Popen records
+            # its PID, but the interpreter that executes this script is its
+            # direct child. Accept that relationship only for an unclaimed
+            # reservation, with the recorded parent's birth identity intact.
+            # Never transfer an already-claimed attempt or trust a reused PID.
+            if not (os.name == 'nt' and not worker.get('claimed_at')
+                    and worker.get('host') == socket.gethostname()
+                    and worker.get('start_ticks')
+                    and worker.get('pid') == os.getppid()
+                    and process_state(worker) == 'live'):
+                return False
         orch.put(folder/'worker.json', {'pid':os.getpid(), 'attempt':attempt,
                  'started_at':launch['started_at'], 'claimed_at':time.time(),
                  'host':socket.gethostname(), **process_identity(os.getpid())})
