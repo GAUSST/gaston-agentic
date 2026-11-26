@@ -28,7 +28,7 @@
     ".agentic/native_hooks.py": "2bb54e421b7aa80306abe55299c942f519c228ef72d803f5ad879d794ca050fd",
     ".agentic/orchestration.py": "e3ab1c483b2dfc6a4c8f6e36ab1f2c03c62b540703e6b498d89753d82862406a",
     ".agentic/pipeline_worker.py": "81f55abdd01abde237c5d0f29bb20cb4e0ad2ac21ae14b89c1c64c91da1f8337",
-    ".agentic/platform_compat.py": "061ab060c1b8ca310207668a8728f86189fadbe78ac7609698d787168fa95eb0",
+    ".agentic/platform_compat.py": "1d9a3e05f8e88c94b43e84a9bcaf14f78c515a6528a585edbc3c944e1c6c10be",
     ".agentic/playwright_tools.py": "0618229fc68788682732efd157584e1ef463958ccd44dd1c18f50cf3e0f42c66",
     ".agentic/policies/fintech.md": "d8dcf41c9223e53c27a3a732e61eb1b47f09db91262b8b241ccf988e47eac388",
     ".agentic/project_continuity.py": "669a52118fea09a6ef8773a18c4f9f26cdf85da9cbd5ac2f697be134fc06d900",

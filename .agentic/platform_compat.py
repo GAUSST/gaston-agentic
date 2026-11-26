@@ -249,7 +249,7 @@ class _WindowsVerificationJob:
     The Python gate starts without launching the command. Assign its process
     to a kill-on-close job before allowing it to create descendants.
     """
-    def __init__(self, name=None):
+    def __init__(self, job_name=None):
         import ctypes
         from ctypes import wintypes
 
@@ -296,7 +296,7 @@ class _WindowsVerificationJob:
             fn.restype = result
         self.kernel, self.ctypes, self.accounting = kernel, ctypes, Accounting
         ctypes.set_last_error(0)
-        self.handle = kernel.CreateJobObjectW(None, name)
+        self.handle = kernel.CreateJobObjectW(None, job_name)
         if not self.handle:
             raise ctypes.WinError(ctypes.get_last_error())
         if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
