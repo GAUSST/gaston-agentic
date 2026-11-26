@@ -82,7 +82,7 @@ def _central_init() -> int:
         print('Gaston central project adapter created: ' + str(root / '.gaston/project.json'))
     else:
         print('Gaston central project adapter already exists: ' + str(root / '.gaston/project.json'))
-    if sys.stdin.isatty() or '--setup' in sys.argv[1:]:
+    if sys.stdin.isatty():
         os.environ['GASTON_ENGINE_PROJECT'] = str(root)
         os.environ['GASTON_ENGINE_MODE'] = 'central'
         from importlib import util
@@ -95,7 +95,7 @@ def _central_init() -> int:
         from gaston_engine.eng import main as start_engine
         start_engine(['init', '--non-interactive'] if not sys.stdin.isatty() else ['init'])
     else:
-        print('Project adapter initialized. Run dev init --setup to configure providers.')
+        print('Project adapter initialized. Run dev init in an interactive terminal to configure providers.')
     return 0
 
 
@@ -217,6 +217,8 @@ def main():
             from gaston_engine.project_layout import find_project
             start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
             arguments = sys.argv[1:]
+            if arguments == ['init', '--setup']:
+                raise ValueError('`dev init --setup` is unnecessary; run `dev init` in an interactive terminal.')
             # A central update is global and may be invoked outside any
             # project. Existing legacy workspaces retain their older updater.
             if arguments and arguments[0] == 'update':
@@ -229,7 +231,7 @@ def main():
                 if mode == 'central':
                     raise RuntimeError('Explicit legacy workspace migration is required for central execution')
             if mode == 'central':
-                if arguments in (['init'], ['init', '--setup']):
+                if arguments == ['init']:
                     return _central_init()
                 root, kind = find_project(start)
                 if kind == 'legacy' and arguments == ['migrate']:
@@ -238,11 +240,11 @@ def main():
                     return _central_uninstall(root)
                 return _central_launch(root)
 
-            root, kind = find_project(start, allow_new=arguments in (['init'], ['init', '--setup']))
-            if kind == 'new' and arguments in (['init'], ['init', '--setup']):
+            root, kind = find_project(start, allow_new=arguments == ['init'])
+            if kind == 'new' and arguments == ['init']:
                 return _central_init()
             if kind == 'central':
-                if arguments in (['init'], ['init', '--setup']):
+                if arguments == ['init']:
                     return _central_init()
                 if arguments == ['uninstall']:
                     return _central_uninstall(root)

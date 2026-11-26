@@ -18,16 +18,14 @@ python3 .agentic/central_install.py
 
 # Inside an existing application repository:
 dev init
-dev init --setup       # Configure tools/providers explicitly, with approval
 dev models
 dev sessions
 dev                     # Engineering Lead once setup is complete
 
-# Existing legacy .agentic project:
+# One-time transition only for an existing legacy .agentic project:
 dev migrate             # Explicit, reviewed legacy-to-central migration
 
 # From a centrally managed project:
-dev update --check
 dev update              # Review cryptographically verified release; confirm installation
 dev update --rollback   # Explicit version rollback
 dev uninstall           # Keep Context (default) or confirmed Full Erase

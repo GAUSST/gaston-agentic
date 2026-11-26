@@ -169,11 +169,8 @@ def activate(folder: Path, tag: str, *, expected_manifest_sha256: str):
 
 def command(args: list[str], *, confirm=input, output=print) -> int:
     parser = argparse.ArgumentParser(prog="dev update")
-    parser.add_argument("--check", action="store_true")
     parser.add_argument("--rollback", action="store_true")
     parsed = parser.parse_args(args)
-    if parsed.check and parsed.rollback:
-        raise CentralUpdateError("Choose only one update operation")
     folder = home()
     installed = _read_pointer(folder)
     from importlib import metadata
@@ -214,8 +211,6 @@ def command(args: list[str], *, confirm=input, output=print) -> int:
         output("Gaston is current: " + current)
         return 0
     output("Signed Gaston update available: " + current + " → " + release["tag"])
-    if parsed.check:
-        return 0
     commit = signed_release_commit(OFFICIAL_REPOSITORY, release["tag"])
     archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
     manifest, payload = _validate_candidate(archive, release["tag"])

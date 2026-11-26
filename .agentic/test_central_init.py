@@ -67,6 +67,12 @@ class CentralProjectBootstrapTests(unittest.TestCase):
         self.assertIn('No Gaston project found', result.stderr)
         self.assertFalse((self.project / '.gaston').exists())
 
+    def test_setup_alias_is_rejected_with_native_init_guidance(self):
+        result = self.dev('init', '--setup')
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn('run `dev init` in an interactive terminal', result.stderr)
+        self.assertFalse((self.project / '.gaston').exists())
+
     def test_invalid_existing_marker_is_not_overwritten(self):
         folder = self.project / '.gaston'
         folder.mkdir()

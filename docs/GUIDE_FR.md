@@ -38,7 +38,7 @@ Ouvrez un nouveau terminal, placez-vous à la racine du projet :
 dev init
 ```
 
-Validez avec `GO`. Contexte du projet dans `.gaston/`.
+Dans un terminal interactif, `dev init` ouvre directement l’assistant complet de configuration (fournisseurs, rôles IA, modèles, outils et vérifications). Aucun argument `--setup` n’est nécessaire. Validez avec `GO`. Contexte du projet dans `.gaston/`.
 
 ## Commencer à développer
 
