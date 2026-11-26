@@ -69,7 +69,7 @@ def _central_launch(root: Path) -> int:
     return launch()
 
 
-def _central_init() -> int:
+def _central_init(*, fresh=False) -> int:
     """Opt-in: write only .gaston/project.json into an existing project."""
     from importlib import metadata, util
     target = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
@@ -77,7 +77,7 @@ def _central_init() -> int:
     if spec is None or spec.origin is None or Path(spec.origin).resolve().is_relative_to(target):
         raise RuntimeError('A trusted, externally installed Gaston engine is required')
     from gaston_engine.project_layout import initialize_project
-    root, created = initialize_project(target, engine_version=(os.environ.get('GASTON_ACTIVE_VERSION') or ('v' + metadata.version('gaston-agentic-cli'))).removeprefix('v'))
+    root, created = initialize_project(target, engine_version=(os.environ.get('GASTON_ACTIVE_VERSION') or ('v' + metadata.version('gaston-agentic-cli'))).removeprefix('v'), fresh=fresh)
     if created:
         print('Gaston central project adapter created: ' + str(root / '.gaston/project.json'))
     else:
@@ -217,6 +217,8 @@ def main():
         if mode in ('central', 'auto'):
             from gaston_engine.project_layout import find_project
             start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
+            if arguments == ['init', '--fresh']:
+                return _central_init(fresh=True)
             if arguments == ['init', '--setup']:
                 raise ValueError('`dev init --setup` is unnecessary; run `dev init` in an interactive terminal.')
             # The installed updater always updates the global engine. When

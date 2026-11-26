@@ -59,6 +59,39 @@ class CentralUninstallTests(unittest.TestCase):
         self.assertTrue(self.legacy.is_file())
         self.assertTrue(self.app.is_file())
 
+    def test_erase_then_explicit_fresh_init_preserves_legacy_and_app(self):
+        launcher=self.root/'.agentic/launcher.py'
+        launcher.write_text("raise RuntimeError('Legacy engine must never execute')\n")
+        flow=self.root/'.maestro/smoke.yaml'
+        flow.parent.mkdir()
+        flow.write_text('appId: com.example.demo\n')
+        result=self.dev('erase\nERASE GASTON DATA\nUNINSTALL\n','uninstall')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertFalse((self.root/'.gaston').exists())
+        result=self.dev('','init','--fresh')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertTrue((self.root/'.gaston/project.json').is_file())
+        self.assertFalse(self.memory.exists())
+        self.assertFalse((self.root/'.gaston/runs').exists())
+        self.assertEqual(self.legacy.read_text(),'Old project context\n')
+        self.assertEqual(self.app.read_text(),'class Main {}\n')
+        self.assertEqual(flow.read_text(),'appId: com.example.demo\n')
+        self.assertTrue(launcher.is_file())
+        result=self.dev('','init','--fresh')
+        self.assertEqual(result.returncode,2,result.stdout+result.stderr)
+        self.assertTrue((self.root/'.gaston/project.json').is_file())
+        result=self.dev('','--help')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('Commands:',result.stdout)
+
+    def test_fresh_init_refuses_retained_context(self):
+        result=self.dev('keep\nUNINSTALL\n','uninstall')
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        result=self.dev('','init','--fresh')
+        self.assertEqual(result.returncode,2,result.stdout+result.stderr)
+        self.assertEqual(self.memory.read_text(),'Product decision retained\n')
+        self.assertFalse((self.root/'.gaston/project.json').exists())
+
     def test_cancel_keep_or_erase_is_nondestructive(self):
         for answer in ('cancel\n','erase\nWRONG\n','keep\nWRONG\n'):
             with self.subTest(answer=answer):

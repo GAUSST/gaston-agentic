@@ -185,6 +185,7 @@ def run(root, project, relative_path=None, *, execute, sdk_tool, avd_names,
         # am start -W may return before pidof can see the new process.
         # Keep the same package and emulator; never retry the launch itself.
         process_deadline = clock() + 12
+        alive = {'exit_code': None}
         for attempt in range(1, 13):
             remaining = process_deadline - clock()
             if remaining <= 0:
