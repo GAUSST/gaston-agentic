@@ -147,6 +147,31 @@ class NativeRecoveryTests(unittest.TestCase):
         self.assertEqual(recovery.recover(self.root),[])
         self.assertEqual(orch.read_record(folder/'state.json')['stage'],'implementing')
 
+    def test_concurrent_launch_request_cannot_replace_live_attempt(self):
+        import verification_mcp as vm
+        from project_layout import project_state
+        folder=project_state(self.root)/'runs'/'atomic-launch'
+        folder.mkdir(parents=True)
+        orch.put(folder/'state.json',{'stage':'queued_for_builder'})
+        class Child:
+            pid=4242
+        with patch.object(vm,'ROOT',self.root), \
+             patch.object(vm,'runtime_script',return_value=self.root/'live_builder_worker.py'), \
+             patch.object(vm,'_builder_worker_env',return_value={}), \
+             patch.object(vm.subprocess,'Popen',return_value=Child()) as spawn, \
+             patch('session_store.process_identity',return_value={}), \
+             patch('wait_guard.begin'), \
+             patch.object(orch,'process_state',return_value='alive'):
+            first=vm._launch_builder(folder)
+            second=vm._launch_builder(folder)
+        self.assertEqual(first,4242)
+        self.assertIsNone(second)
+        self.assertEqual(spawn.call_count,1)
+        launch=orch.read_record(folder/'worker-launch.json')
+        worker=orch.read_record(folder/'worker.json')
+        self.assertEqual(launch['attempt'],worker['attempt'])
+        self.assertEqual(worker['pid'],4242)
+
     def test_launch_claim_cannot_run_a_superseded_or_cancelled_attempt(self):
         folder=self.task(stage='queued_for_builder')
         attempt='a'*32
