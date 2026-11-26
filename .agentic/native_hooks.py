@@ -408,7 +408,10 @@ def command_line():
 def _hook_command_args(command: str, provider: str) -> list[str]:
     """Parse a hook using the shell grammar of the provider that executes it."""
     from platform_compat import parse_command, msys_to_windows_path
-    args = parse_command(command)
+    if os.name == 'nt' and provider == 'claude':
+        args = shlex.split(command)
+    else:
+        args = parse_command(command)
     if os.name == 'nt' and provider == 'claude' and len(args) == 3:
         args = [msys_to_windows_path(value) if value.startswith('/') else value for value in args]
     return args
