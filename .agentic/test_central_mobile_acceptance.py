@@ -25,6 +25,7 @@ class MobileAcceptanceTests(unittest.TestCase):
         self.build_output = 'Built build/app/outputs/flutter-apk/app-debug.apk (12MB)'
         self.install_code = 0
         self.launch_output = 'Status: ok\n'
+        self.pid_results = []
         self.maestro_status = 'pass'
         self.cleanup_status = 'ready'
         self.maestro_calls = []
@@ -55,7 +56,7 @@ class MobileAcceptanceTests(unittest.TestCase):
         if 'am' in argv:
             return self.output(self.launch_output)
         if 'pidof' in argv:
-            return self.output('1234\n')
+            return self.pid_results.pop(0) if self.pid_results else self.output('1234\n')
         raise AssertionError(argv)
 
     def start(self, name):
@@ -157,6 +158,31 @@ class MobileAcceptanceTests(unittest.TestCase):
         self.assertEqual(self.screenshots, [('emulator-5554', 'adb')])
         self.assertIn('failure_screenshot', result)
         self.assertEqual(self.cleanups, [True])
+
+    def test_delayed_application_process_retries_same_device(self):
+        self.pid_results = [self.output('', 1), self.output('', 1), self.output('4321\n')]
+        result = self.run_check()
+        self.assertEqual(result['status'], 'pass', result)
+        self.assertEqual(result['stages']['process']['attempts'], 3)
+        self.assertEqual(sum('pidof' in c for c in self.commands), 3)
+        self.assertEqual(sum('am' in c for c in self.commands), 1)
+        self.assertEqual(self.maestro_calls[0][1]['expected_device'], 'emulator-5554')
+
+    def test_missing_application_process_has_bounded_retries_and_no_maestro(self):
+        self.pid_results = [self.output('', 1)] * 30
+        result = self.run_check()
+        self.assertNotEqual(result['status'], 'pass')
+        self.assertLessEqual(sum('pidof' in c for c in self.commands), 12)
+        self.assertLessEqual(self.now, 12)
+        self.assertFalse(self.maestro_calls)
+        self.assertEqual(self.cleanups, [True])
+
+    def test_cancelled_application_process_probe_stops_immediately(self):
+        self.pid_results = [{'exit_code': None, 'reason': 'cancelled'}]
+        result = self.run_check()
+        self.assertEqual(result['status'], 'blocked')
+        self.assertEqual(sum('pidof' in c for c in self.commands), 1)
+        self.assertFalse(self.maestro_calls)
 
     def test_maestro_failure_and_cleanup_are_recorded(self):
         self.maestro_status = 'fail'

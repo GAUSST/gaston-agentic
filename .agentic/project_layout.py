@@ -82,7 +82,7 @@ def read_project_marker(root: Path) -> dict:
     return payload
 
 
-def initialize_project(start: Path, *, engine_version: str) -> tuple[Path, bool]:
+def initialize_project(start: Path, *, engine_version: str, fresh: bool = False) -> tuple[Path, bool]:
     """Explicit, idempotent adapter creation; never copy tools into application.
 
     Does not activate sessions, register hooks, or move legacy .agentic state.
@@ -94,7 +94,15 @@ def initialize_project(start: Path, *, engine_version: str) -> tuple[Path, bool]
     if not requested.is_dir():
         raise ValueError('Run dev init inside an existing project directory')
     root, kind = find_project(requested, allow_new=True)
-    if kind == 'legacy':
+    if fresh:
+        # Explicit fresh initialization after erase. Leave the legacy tree
+        # exactly where it is; do not import any of its state or configuration.
+        # Refuse any retained central context and require the exact root.
+        if root != requested:
+            raise ValueError('Run dev init --fresh at the project root')
+        if (root / '.gaston').exists() or (root / '.gaston').is_symlink():
+            raise ValueError('Fresh initialization requires absent .gaston state; existing data was not changed')
+    elif kind == 'legacy':
         raise ValueError('Central preview supports dev --help only for legacy workspaces; migration is not available yet')
     if kind == 'central':
         read_project_marker(root)

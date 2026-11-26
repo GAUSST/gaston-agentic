@@ -106,5 +106,6 @@ def produce(root: Path, task: dict, build: dict, cfg: dict) -> dict:
             'cross_component_checks':selected['cross_component_checks'],
             'notes':['Proposed verification only. No check executed or passed.',
                      'Every selected gate must pass on this Builder revision. Lead writes and reviews isolated test launcher and HTTP scenarios; delegate only complex implementation-dependent fixtures.',
-                     'Review scenario adequacy, including negative paths. Specialist audits/performance checks are separate, never implicitly passed.'],
+                     'Review scenario adequacy, including negative paths. Specialist audits/performance checks are separate, never implicitly passed.',
+                     'When mobile_e2e is selected, run the APK build/device check before Flutter analyze and tests for that project. Build-generated input changes can expire earlier evidence; inspect expired_checks and rerun only missing or expired gates. Never reuse a pass after material input changes.'],
             'project_roots':projects,'task_goal':str(task.get('goal',''))[:280]}

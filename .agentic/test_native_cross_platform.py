@@ -293,6 +293,24 @@ class NativePlatformTests(unittest.TestCase):
             self.assertEqual(built['changed_files'], ['lib/other.dart', 'lib/theme.dart'])
             self.assertEqual(built['lead_changed_files'], ['lib/theme.dart'])
 
+    @unittest.skipIf(os.name == 'nt', 'POSIX process groups')
+    def test_denied_group_signal_requires_proof_no_live_members(self):
+        import signal
+        from unittest.mock import patch
+        with patch.object(pc.os, 'killpg', side_effect=PermissionError(1, 'denied')):
+            for snapshot, gone in [('123 Z+\n456 S\n', True), ('456 S\n', True),
+                                   ('123 S\n', False), ('bad snapshot\n', False)]:
+                with patch.object(pc.subprocess, 'run', return_value=subprocess.CompletedProcess(
+                        [], 0, stdout=snapshot, stderr='')):
+                    if gone:
+                        self.assertFalse(pc._signal_owned_group(123, signal.SIGKILL))
+                    else:
+                        with self.assertRaises(PermissionError):
+                            pc._signal_owned_group(123, signal.SIGKILL)
+            with patch.object(pc.subprocess, 'run', side_effect=subprocess.TimeoutExpired('ps', 3)):
+                with self.assertRaises(PermissionError):
+                    pc._signal_owned_group(123, signal.SIGKILL)
+
     def test_verification_runner_stdin_is_eof_and_preserves_exit_code(self):
         import verification_mcp as vm
         result = vm.execute([sys.executable, '-c',
@@ -343,6 +361,62 @@ class NativePlatformTests(unittest.TestCase):
                 if timer:
                     timer.cancel()
                     timer.join()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows named-job interrupted verification')
+    def test_interrupted_flutter_reservation_recovers_only_after_owned_job_gone(self):
+        import json
+        import time
+        import verification_coordination as coordination
+        from project_layout import project_state
+        with tempfile.TemporaryDirectory(prefix='gaston interrupted check ') as td:
+            root = Path(td).resolve()
+            marker = root / 'running.json'
+            code = """
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+import verification_coordination as c
+import platform_compat as p
+root = Path(sys.argv[2])
+marker = str(root / 'running.json')
+child = 'import json,os,time; from pathlib import Path; Path(' + repr(marker) + ').write_text(json.dumps(os.getpid())); time.sleep(90)'
+with c.reserve(root, 'flutter_analyze', '.', task_id='flutter-interrupted') as r:
+    p.run_verification_process([sys._base_executable, '-I', '-c', child], cwd=root, timeout=90, job_name=r['windows_job'])
+"""
+            proc = subprocess.Popen([sys._base_executable, '-I', '-c', code,
+                                     str(ROOT / '.agentic'), str(root)],
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            child_pid = None
+            try:
+                deadline = time.monotonic() + 20
+                while time.monotonic() < deadline and not marker.is_file():
+                    if proc.poll() is not None:break
+                    time.sleep(.05)
+                self.assertTrue(marker.is_file(), 'Native verification did not start')
+                child_pid = json.loads(marker.read_text())
+                row = coordination.active(root)
+                self.assertEqual(row['owner_state'], 'live')
+                self.assertFalse(pc.windows_verification_job_gone(row['windows_job']))
+                self.assertFalse(coordination.recover_proven_interruption(root))
+                proc.kill()
+                proc.wait(timeout=10)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and not pc.windows_verification_job_gone(row['windows_job']):
+                    time.sleep(.05)
+                self.assertTrue(pc.windows_verification_job_gone(row['windows_job']))
+                self.assertEqual(pc.process_status(child_pid), 'dead')
+                self.assertTrue(coordination.recover_proven_interruption(root))
+                self.assertIsNone(coordination.active(root))
+                archived = list((project_state(root)/'local/interrupted-verifications').glob('*.json'))
+                self.assertEqual(len(archived), 1)
+                self.assertEqual(json.loads(archived[0].read_text())['outcome'], 'interrupted_no_acceptance')
+                with coordination.reserve(root,'flutter_tests','.') as r:
+                    self.assertIn('windows_job',r)
+                self.assertIsNone(coordination.active(root))
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                proc.wait(timeout=10)
 
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:

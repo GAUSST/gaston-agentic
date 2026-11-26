@@ -185,6 +185,7 @@ for _tool in TOOLS:
         _tool['inputSchema']['properties'].update(failure_kind={'type':'string','enum':['implementation','architecture','specification','test_fixture','environment','regression']},root_cause=_str,reproduction=_str)
 
 _VERIFICATION_CANCEL = ContextVar('verification_cancel', default=None)
+_VERIFICATION_JOB = ContextVar('verification_job', default=None)
 
 
 def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
@@ -196,7 +197,8 @@ def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
             argv[0] = resolve_flutter(cwd, workspace=ROOT)
         argv, env, _ = prepare_subprocess(argv, env)
         return run_verification_process(argv, cwd=cwd, env=env, timeout=timeout,
-                                        output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get())
+                                        output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get(),
+                                        job_name=_VERIFICATION_JOB.get())
     except (OSError, ValueError, RuntimeError) as exc:
         return {'exit_code':None, 'reason':'execution_failed', 'stderr':str(exc)[-1000:]}
 
@@ -1374,9 +1376,11 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
     try:
         with coordination.reserve(ROOT,kind,project,integrated=bool(task.get('checkpoint_acceptance')),task_id=task_id) as reservation:
             token = _VERIFICATION_CANCEL.set(cancel_event)
+            job_token = _VERIFICATION_JOB.set(reservation.get('windows_job'))
             try:
                 return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event)
             finally:
+                _VERIFICATION_JOB.reset(job_token)
                 _VERIFICATION_CANCEL.reset(token)
     except coordination.Busy as exc:
         return response('blocked',reason=str(exc),requires_idle_workspace=exc.fields['blocker']=='workspace_not_idle',**exc.fields)
@@ -1389,7 +1393,8 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
     # integrated acceptance retains full-suite verification.
     if kind=='backend' and test_filter is None and current_task.get('work_plan_id') and not current_task.get('checkpoint_acceptance'):
         test_filter=evidence_efficiency.focused_test_selector(ROOT,folder,project)
-    before=acceptance_audit.revision_fingerprint(folder)
+    before_inputs={}
+    before=acceptance_audit.revision_fingerprint(folder,input_hashes=before_inputs)
     # Reuse only a current actual backend pass, same selector and explicit project,
     # with a verifiable unchanged Git workspace fingerprint. External/runtime
     # checks deliberately run fresh; never infer them from a previous smoke test.
@@ -1456,8 +1461,12 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
         if coordination.fingerprints(ROOT,reservation['read_scope'])!=reservation['fingerprints']:
             result={**result,'status':'blocked','reason':'Verification source changed during execution; rerun on stable inputs'}
     if cancel_event is not None and cancel_event.is_set():result={**result,'status':'blocked','reason':'Client cancelled the verification subscription; no acceptance claim'}
-    if not _authorized_delegate() or not before or acceptance_audit.revision_fingerprint(folder)!=before:
+    after_inputs={}
+    after=acceptance_audit.revision_fingerprint(folder,input_hashes=after_inputs)
+    if not _authorized_delegate() or not before or after!=before:
         result={**result,'status':'blocked','reason':'Cannot bind the check to unchanged task files and current Lead; re-check current revision'}
+        if before and after and after!=before:
+            result['changed_verification_inputs']=acceptance_audit.changed_inputs(before_inputs,after_inputs)
     params['verification_read_scope']=reservation['read_scope']
     entry=acceptance_audit.record(folder,kind,result,parameters=params)
     return response(result.get('status','blocked'),task_id=task_id,
@@ -1514,6 +1523,8 @@ def task_acceptance_report(task_id):
     with redirect_stdout(sys.stderr):eng.write_json(folder/'verification-plan-lead.json',plan)
     results=acceptance_audit.current(folder)
     summary=acceptance_audit.summarize(plan,results)
+    expired=acceptance_audit.expired_checks(folder,results)
+    if expired:summary['expired_checks']=expired
     docs=documentation_review.report(folder)
     summary['documentation_review']=docs
     quality=code_quality.report(folder)
@@ -2044,6 +2055,11 @@ def main():
         raise SystemExit(128+signum)
     signal.signal(signal.SIGTERM,_terminate)
     _recover_abandoned_emulator()
+    try:
+        if _authorized_delegate():
+            __import__('verification_coordination').recover_proven_interruption(ROOT)
+    except (OSError,ValueError,RuntimeError):
+        pass  # Unverifiable reservations remain blocked, never silently erased.
     atexit.register(_cleanup_on_exit)
     protocol_out=sys.stdout  # Only send() writes JSON-RPC; concurrent tool diagnostics go to stderr.
     sys.stdout=sys.stderr

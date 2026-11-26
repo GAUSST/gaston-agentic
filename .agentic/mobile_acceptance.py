@@ -182,9 +182,29 @@ def run(root, project, relative_path=None, *, execute, sdk_tool, avd_names,
                                       '-n', component], 60)
         if launched.get('exit_code') != 0 or not re.search(r'(?m)^Status:\s*ok\s*$', launched.get('stdout', '')):
             return failed(launched, 'Android did not confirm successful application launch')
-        alive = command('process', [adb, '-s', device, 'shell', 'pidof', app_id], 15)
+        # am start -W may return before pidof can see the new process.
+        # Keep the same package and emulator; never retry the launch itself.
+        process_deadline = clock() + 12
+        alive = {'exit_code': None}
+        for attempt in range(1, 13):
+            remaining = process_deadline - clock()
+            if remaining <= 0:
+                break
+            alive = command('process', [adb, '-s', device, 'shell', 'pidof', app_id],
+                            min(3, remaining))
+            stages['process']['attempts'] = attempt
+            if alive.get('exit_code') == 0 and re.fullmatch(r'\d+(?:\s+\d+)*', alive.get('stdout', '').strip()):
+                break
+            if alive.get('reason') == 'cancelled':
+                return outcome('blocked', 'Mobile verification cancelled')
+            remaining = process_deadline - clock()
+            if remaining <= 0 or attempt == 12:
+                return failed(alive, 'Application process is not confirmed running after launch (12-second startup window)')
+            sleep(min(1, remaining))
+        else:
+            return outcome('blocked', 'Application startup could not be confirmed')
         if alive.get('exit_code') != 0 or not re.fullmatch(r'\d+(?:\s+\d+)*', alive.get('stdout', '').strip()):
-            return failed(alive, 'Application process is not confirmed running after launch')
+            return failed(alive, 'Application process is not confirmed running after launch (12-second startup window)')
         details['app_started'] = True
         tested = maestro_run(flow.relative_to(root).as_posix(), expected_device=device, cwd=app)
         stages['maestro'] = tested
