@@ -75,6 +75,93 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertEqual((central / "local/PROJECT_CONTEXT.md").read_text(), "History and decisions\n")
         self.assertEqual((central / "migration-backups/legacy-agentic/config.json").read_bytes(), self.settings_bytes)
 
+    def _state_only_central(self):
+        old = self.root / ".agentic"
+        for filename in ("__init__.py", "launcher.py", "eng.py", "manifest.json"):
+            (old / filename).unlink()
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project", "engine": "gaston-agentic-cli",
+            "created_with": "1.6.13"
+        }), encoding="utf-8")
+        return old, central
+
+    def test_current_update_migrates_manifest_free_central_runtime_state(self):
+        old, central = self._state_only_central()
+        checkpoint = old / "local/lead-checkpoint.json"
+        checkpoint.write_text('{"session":"legacy"}', encoding="utf-8")
+        evolution = old / "local/evolution/history.json"
+        evolution.parent.mkdir()
+        evolution.write_text('{"history":"preserve"}', encoding="utf-8")
+        central_context = central / "local/CURRENT_CONTEXT.md"
+        central_context.parent.mkdir()
+        central_context.write_text("keep central", encoding="utf-8")
+        prompts = []
+        def approve(prompt):
+            prompts.append(prompt)
+            return ""
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \
+             patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):
+            self.assertEqual(central_update.command([], root=self.root, confirm=approve), 0)
+            self.assertEqual(central_update.command([], root=self.root, confirm=approve), 0)
+        self.assertEqual(len(prompts), 1)
+        self.assertIn("[default: Yes]", prompts[0])
+        self.assertFalse(old.exists())
+        backup = central / "migration-backups/legacy-agentic"
+        for relative, expected in (("local/lead-checkpoint.json", '{"session":"legacy"}'),
+                                   ("local/evolution/history.json", '{"history":"preserve"}'),
+                                   ("local/PROJECT_CONTEXT.md", "History and decisions\n")):
+            self.assertEqual((central / relative).read_text(encoding="utf-8"), expected)
+            self.assertEqual((backup / relative).read_text(encoding="utf-8"), expected)
+        self.assertEqual(central_context.read_text(encoding="utf-8"), "keep central")
+        self.assertEqual(self.project_file.read_text(), "print('mine')\n")
+        self.assertEqual(self.dev("", "--help").returncode, 0)
+        self.assertFalse(old.exists())
+
+    def test_manifest_free_toolkit_source_is_not_migrated(self):
+        old, central = self._state_only_central()
+        source = old / "eng.py"
+        source.write_text("unverified toolkit", encoding="utf-8")
+        with patch("updater.latest") as latest:
+            with self.assertRaisesRegex(RuntimeError, "Unrecognized manifest-free legacy entry"):
+                central_update.command([], root=self.root, confirm=lambda _: self.fail("unexpected prompt"))
+            latest.assert_not_called()
+        self.assertEqual(source.read_text(), "unverified toolkit")
+        self.assertTrue(self.context.is_file())
+        self.assertFalse((central / "migration-backups").exists())
+
+    def test_manifest_free_state_requires_valid_central_marker(self):
+        old, central = self._state_only_central()
+        (central / "project.json").write_text("invalid", encoding="utf-8")
+        with patch("updater.latest") as latest:
+            with self.assertRaisesRegex(ValueError, "Invalid Gaston project marker"):
+                central_update.command([], root=self.root, confirm=lambda _: self.fail("unexpected prompt"))
+            latest.assert_not_called()
+        self.assertTrue(self.context.is_file())
+
+    def test_manifest_free_state_conflict_preserves_both_copies(self):
+        old, central = self._state_only_central()
+        (central / "local").mkdir()
+        current = central / "local/PROJECT_CONTEXT.md"
+        current.write_text("central history", encoding="utf-8")
+        with patch("updater.latest") as latest:
+            with self.assertRaisesRegex(RuntimeError, "Conflicting project state"):
+                central_update.command([], root=self.root, confirm=lambda _: self.fail("unexpected prompt"))
+            latest.assert_not_called()
+        self.assertEqual(current.read_text(), "central history")
+        self.assertEqual(self.context.read_text(), "History and decisions\n")
+
+    def test_invalid_manifest_is_not_treated_as_missing(self):
+        old, central = self._state_only_central()
+        (old / "manifest.json").write_text("invalid", encoding="utf-8")
+        with patch("updater.latest") as latest:
+            with self.assertRaisesRegex(RuntimeError, "Invalid legacy workspace manifest"):
+                central_update.command([], root=self.root, confirm=lambda _: self.fail("unexpected prompt"))
+            latest.assert_not_called()
+        self.assertTrue(self.context.is_file())
+        self.assertFalse((central / "migration-backups").exists())
+
     def test_new_release_and_project_migration_share_single_confirmation(self):
         from test_central_update import candidate
         manifest, payload = candidate()

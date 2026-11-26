@@ -13,6 +13,8 @@ the global version store and activates it using a version pointer.
 Inside a project, the same confirmation also authorizes safe legacy state consolidation, even when the engine is already current. Existing state is never overwritten; active sessions and conflicts stop migration, and legacy files are archived and verified before removal. Outside a project the update only activates the engine. Application source remains untouched. `dev update --rollback` restores a recorded previous version when
 available. An ordinary launch never installs an update automatically. Explicit legacy mode retains its own updater and publisher trust configuration. When upgrading from v1.6.12 or earlier, the old running updater cannot execute the new lifecycle: run `dev update` again inside the project after installing the new version if consolidation is pending.
 
+A central project may contain only residual runtime state under `.agentic/`, without a legacy toolkit manifest. A valid central project marker and recognized state-only layout are sufficient for safe consolidation; unverified toolkit files, malformed manifests, links and conflicts still stop migration. If the v1.6.13 updater rejects this layout before checking the publisher, install the next signed release using `dev update` outside any Gaston project, then return to the project and run `dev update` to consolidate.
+
 ## Maintainer release process
 
 1. Merge a release PR only after CI passes on the exact PR head commit.
