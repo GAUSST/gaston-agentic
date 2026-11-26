@@ -293,6 +293,57 @@ class NativePlatformTests(unittest.TestCase):
             self.assertEqual(built['changed_files'], ['lib/other.dart', 'lib/theme.dart'])
             self.assertEqual(built['lead_changed_files'], ['lib/theme.dart'])
 
+    def test_verification_runner_stdin_is_eof_and_preserves_exit_code(self):
+        import verification_mcp as vm
+        result = vm.execute([sys.executable, '-c',
+                             "import sys; print('EOF', sys.stdin.read() == ''); "
+                             "print('diagnostic', file=sys.stderr); sys.exit(7)"], timeout=15)
+        self.assertEqual(result['exit_code'], 7, result)
+        self.assertIn('EOF True', result['stdout'])
+        self.assertIn('diagnostic', result['stderr'])
+
+    def test_verification_runner_finishes_when_descendant_inherits_output(self):
+        import time
+        import verification_mcp as vm
+        code = ("import subprocess, sys; "
+                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(90)']); "
+                "print(p.pid, flush=True)")
+        started = time.monotonic()
+        result = vm.execute([sys.executable, '-c', code], timeout=15)
+        self.assertEqual(result['exit_code'], 0, result)
+        self.assertLess(time.monotonic()-started, 12, result)
+        pid = int(result['stdout'].strip())
+        if os.name == 'nt':
+            self.assertEqual(pc.process_status(pid), 'dead', result)
+
+    def test_verification_runner_timeout_and_cancellation_release_owned_tree(self):
+        import time
+        from threading import Event, Timer
+        import verification_mcp as vm
+        code = ("import subprocess, sys, time; "
+                "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(90)']); "
+                "print(p.pid, flush=True); time.sleep(90)")
+        for cancel in (False, True):
+            event = Event()
+            timer = Timer(3, event.set) if cancel else None
+            token = vm._VERIFICATION_CANCEL.set(event)
+            try:
+                if timer:
+                    timer.start()
+                started = time.monotonic()
+                result = vm.execute([sys.executable, '-c', code], timeout=15 if cancel else 3)
+                self.assertIsNone(result['exit_code'], result)
+                self.assertEqual(result['reason'], 'cancelled' if cancel else 'timeout', result)
+                self.assertLess(time.monotonic()-started, 12, result)
+                pid = int(result['stdout'].strip())
+                if os.name == 'nt':
+                    self.assertEqual(pc.process_status(pid), 'dead', result)
+            finally:
+                vm._VERIFICATION_CANCEL.reset(token)
+                if timer:
+                    timer.cancel()
+                    timer.join()
+
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
