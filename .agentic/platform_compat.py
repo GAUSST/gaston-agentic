@@ -37,12 +37,12 @@ def msys_to_windows_path(value: str) -> str:
     raw = str(value)
     match = re.fullmatch(r'/([A-Za-z])(?:/(.*))?', raw)
     if match:
-        tail = (match.group(2) or '').replace('/', '\\\\')
-        return match.group(1).upper() + ':\\\\' + tail
+        tail = (match.group(2) or '').replace('/', '\\')
+        return match.group(1).upper() + ':\\' + tail
     if raw.startswith('//'):
         parts = [part for part in raw[2:].split('/') if part]
         if len(parts) >= 2:
-            return '\\\\\\\\' + '\\\\'.join(parts)
+            return '\\\\' + '\\'.join(parts)
     return raw
 
 
