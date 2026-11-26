@@ -131,11 +131,6 @@ def _global_update(args: list[str], root: Path | None = None) -> int:
     return module.main(args, root=root)
 
 
-def _central_migrate(root: Path) -> int:
-    module = _central_module('central_migration', root)
-    return module.main(root)
-
-
 def _managed_bootstrap() -> int | None:
     """Dispatch through a verified, immutable global engine release when present.
 
@@ -211,17 +206,20 @@ def main():
         mode = os.environ.get('GASTON_ENGINE_MODE', 'auto').strip().lower()
         if mode not in ('auto', 'legacy', 'central'):
             raise ValueError('GASTON_ENGINE_MODE must be auto, legacy or central')
+        arguments = sys.argv[1:]
+        if arguments and arguments[0] == 'migrate':
+            raise ValueError('dev migrate is disabled. dev update only updates the global engine and refreshes hooks; project files are left untouched.')
 
         # The source-free project adapter is authoritative only for the central
         # installation. Legacy installations preserve their normal dispatch.
         if mode in ('central', 'auto'):
             from gaston_engine.project_layout import find_project
             start = Path(os.environ.get('GASTON_ROOT') or Path.cwd()).expanduser().resolve()
-            arguments = sys.argv[1:]
             if arguments == ['init', '--setup']:
                 raise ValueError('`dev init --setup` is unnecessary; run `dev init` in an interactive terminal.')
-            # The installed updater owns both engine activation and project
-            # consolidation. Outside a project it updates the engine only.
+            # The installed updater always updates the global engine. When
+            # invoked inside a central project, it also refreshes managed hooks.
+            # It never moves, archives, deletes or migrates project files.
             # Explicit legacy mode continues using the legacy local updater.
             if arguments and arguments[0] == 'update':
                 update_root, update_kind = find_project(start, allow_new=True)
@@ -232,9 +230,6 @@ def main():
                 if arguments == ['init']:
                     return _central_init()
                 root, kind = find_project(start)
-                if arguments == ['migrate'] and kind in ('legacy', 'central'):
-                    if kind == 'legacy' or (root/'.agentic').exists() or (root/'.gaston-dev-db').exists() or (root/'.gaston-dev-db').is_symlink():
-                        return _central_migrate(root)
                 if kind == 'central' and arguments == ['uninstall']:
                     return _central_uninstall(root)
                 return _central_launch(root)
@@ -242,18 +237,12 @@ def main():
             root, kind = find_project(start, allow_new=arguments == ['init'])
             if kind == 'new' and arguments == ['init']:
                 return _central_init()
-            if kind == 'central' and arguments == ['migrate'] and (
-                    (root/'.agentic').exists() or (root/'.gaston-dev-db').exists() or (root/'.gaston-dev-db').is_symlink()):
-                return _central_migrate(root)
             if kind == 'central':
                 if arguments == ['init']:
                     return _central_init()
                 if arguments == ['uninstall']:
                     return _central_uninstall(root)
                 return _central_launch(root)
-            if kind == 'legacy' and arguments == ['migrate']:
-                return _central_migrate(root)
-
             # A legacy project stays on its established runtime and is never
             # silently initialized or migrated into the new project layout.
             root = workspace(start)

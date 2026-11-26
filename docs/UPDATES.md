@@ -2,18 +2,9 @@
 
 ## Central installations (v1.6+)
 
-Close active Gaston sessions, then run `dev update` from an application workspace
-or an ordinary directory outside any project. Interactive `dev init` checks for a newer published release and suggests `dev update`; it never installs or migrates. The official
-publisher is pinned to GAUSST/gaston-agentic. No publisher configuration is
-required for a central installation. The updater checks for a newer published
-stable release, verifies the signed annotated tag and exact-commit manifest,
-and uses the normal yes/no prompt (default Yes). It stages the verified engine in
-the global version store and activates it using a version pointer.
+Run `dev update` from anywhere. It always updates the globally installed Gaston engine: it verifies the latest signed annotated release and exact-commit manifest, asks one yes/no question (default Yes), stages the verified engine in the global version store, and activates it through the version pointer.
 
-Inside a project, the same confirmation also authorizes safe legacy state consolidation, even when the engine is already current. Existing state is never overwritten; active sessions and conflicts stop migration, and legacy files are archived and verified before removal. Outside a project the update only activates the engine. Application source remains untouched. `dev update --rollback` restores a recorded previous version when
-available. An ordinary launch never installs an update automatically. Explicit legacy mode retains its own updater and publisher trust configuration. When upgrading from v1.6.12 or earlier, the old running updater cannot execute the new lifecycle: run `dev update` again inside the project after installing the new version if consolidation is pending.
-
-A central project may contain only residual runtime state under `.agentic/`, without a legacy toolkit manifest. A valid central project marker and recognized state-only layout are sufficient for safe consolidation; unverified toolkit files, malformed manifests, links and conflicts still stop migration. If the v1.6.13 updater rejects this layout before checking the publisher, install the next signed release using `dev update` outside any Gaston project, then return to the project and run `dev update` to consolidate.
+When invoked inside a central project, `dev update` also refreshes only recognized Gaston hook commands in `.claude/settings.local.json` and `.codex/hooks.json` so they target the active engine. Unrelated provider hooks and trust records are preserved. The updater does not scan project state or recursively inspect project folders. It reads only the central project marker and provider hook settings needed for that refresh. It never moves, migrates, archives, overwrites or deletes project files or folders. Existing `.agentic/` and `.gaston/` contents remain untouched. Running the command outside a project updates only the global engine. `dev update --rollback` restores a recorded previous version and refreshes managed hooks to that version. `dev migrate` is disabled. An ordinary Gaston launch never installs an update automatically. Explicit legacy mode retains its own updater and publisher trust configuration.
 
 ## Maintainer release process
 

@@ -1,8 +1,10 @@
-"""Signed, versioned, non-project Gaston engine activation.
+"""Signed global Gaston engine updates and managed provider-hook refresh.
 
-Managed versions live under the user's private application-data directory;
-the native dev entry point remains a stable bootstrap. Project-scoped updates
-can also consolidate legacy Gaston state after one explicit approval.
+The updater changes only the global version store and active-version pointer.
+When run from a central project, it may retarget recognized Gaston hook
+commands in that project's Claude/Codex settings. No project state or
+installed project files are migrated, archived or deleted; those two provider
+settings are changed only to refresh recognized Gaston hook commands.
 """
 from __future__ import annotations
 
@@ -186,7 +188,72 @@ def suggest_update(*, output=print) -> None:
         return
 
 
+def _current_hook_script(folder: Path) -> Path:
+    """Return the native hook script belonging to the active global engine."""
+    active = active_path(folder)
+    if active is not None:
+        return active / "gaston_engine" / "native_hooks.py"
+    from importlib import metadata
+    return Path(metadata.distribution("gaston-agentic-cli").locate_file(
+        "gaston_engine/native_hooks.py"
+    )).resolve()
+
+
+def _refresh_project_hooks(root: Path | None, engine_script: Path, *, output=print) -> dict:
+    """Refresh only recognized Claude/Codex hook commands in a central project.
+
+    The currently running updater may be the previous release. Temporarily point
+    its hook manager at the newly activated engine script so refreshed commands
+    never keep referencing the old version. All other project files, hook
+    entries and provider trust records remain untouched.
+    """
+    unchanged = {"claude": False, "codex": False}
+    if root is None:
+        return unchanged
+    project = Path(root).resolve()
+    state_dir = project / ".gaston"
+    marker = state_dir / "project.json"
+    if state_dir.is_symlink() or marker.is_symlink() or not marker.is_file():
+        return unchanged
+    candidate = Path(engine_script)
+    if candidate.is_symlink() or not candidate.is_file():
+        output("Gaston hook refresh skipped: installed native hook runtime is unavailable.")
+        return unchanged
+    script = candidate.resolve()
+
+    env_names = ("GASTON_ENGINE_MODE", "GASTON_ENGINE_PROJECT")
+    previous = {name: os.environ.get(name) for name in env_names}
+    try:
+        os.environ["GASTON_ENGINE_MODE"] = "central"
+        os.environ["GASTON_ENGINE_PROJECT"] = str(project)
+        import importlib
+        hooks = importlib.import_module("native_hooks")
+        original_runtime_script = hooks.runtime_script
+        hooks.runtime_script = lambda name: (
+            script if name == "native_hooks.py" else original_runtime_script(name)
+        )
+        try:
+            refreshed = hooks.refresh_central_provider_hooks(project)
+        finally:
+            hooks.runtime_script = original_runtime_script
+    except (ImportError, OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+        output("Gaston hook refresh skipped: " + str(exc))
+        return unchanged
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+    for provider in ("claude", "codex"):
+        if refreshed.get(provider):
+            output(provider.capitalize() + " hooks refreshed to the active Gaston engine.")
+    return refreshed
+
+
 def command(args: list[str], *, root: Path | None = None, confirm=input, output=print) -> int:
+    """Update the global engine; optionally refresh this central project's hooks."""
     parser = argparse.ArgumentParser(prog="dev update")
     parser.add_argument("--rollback", action="store_true")
     parsed = parser.parse_args(args)
@@ -195,6 +262,7 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
     from importlib import metadata
     fallback = metadata.version("gaston-agentic-cli")
     current = "v" + fallback if installed is None else installed["tag"]
+
     if parsed.rollback:
         previous = installed.get("previous") if installed else None
         if not previous or not VERSION.fullmatch(previous):
@@ -208,6 +276,7 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
                 raise CentralUpdateError("Refusing linked global pointer")
             pointer.unlink()
             output("Gaston reverted to base installation " + previous + ".")
+            _refresh_project_hooks(root, _current_hook_script(folder), output=output)
             return 0
         previous_dir = _safe_child(folder / "versions" / previous, folder)
         manifest_file = previous_dir / "gaston_engine" / "manifest.json"
@@ -219,56 +288,47 @@ def command(args: list[str], *, root: Path | None = None, confirm=input, output=
             return 0
         activate(folder, previous, expected_manifest_sha256=wanted)
         output("Gaston reverted to " + previous + ".")
+        _refresh_project_hooks(
+            root, previous_dir / "gaston_engine" / "native_hooks.py", output=output
+        )
         return 0
 
-    # Verify the exact signed release before approval; migration preflight
-    # presents proposed moves before invoking the same approval callback.
+    # Publisher identity and release contents are verified before the one
+    # yes/no approval. Project context is used only for the narrow hook refresh.
     from updater import latest, signed_release_commit, _download, _github_url
     from updater import _validate_candidate, MAX_ARCHIVE, version
     from setup_wizard import yesno
-    from central_migration import migrate, needs_migration
-    pending = root is not None and needs_migration(root)
 
-    def approve():
-        # For a pending project, migration invokes this only after checking
-        # ownership, active sessions and merge conflicts. Invalid workspaces
-        # never contact the publisher or change the global engine.
-        release = latest(OFFICIAL_REPOSITORY)
-        tag = release["tag"]
-        newer = version(tag) > version(current)
-        if newer:
-            output("Gaston update available: " + current + " to " + tag)
-            commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
-            archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
-            manifest, payload = _validate_candidate(archive, tag)
-        else:
-            output("Gaston is current: " + current)
-            if not pending:
-                return False
-        question = ("Install verified update and consolidate project?" if newer and pending
-                    else "Consolidate legacy Gaston project?" if pending
-                    else "Install verified Gaston update?")
-        try:
-            accepted = yesno(question, default=True, read=confirm, write=output)
-        except EOFError:
-            accepted = False
-        if not accepted:
-            if not pending:
-                output("Update cancelled; no changes made.")
-            return False
-        if newer:
-            stage_verified_release(folder, tag, payload, manifest)
-            manifest_hash = _hash(payload[".agentic/manifest.json"][0])
-            activate(folder, tag, expected_manifest_sha256=manifest_hash)
-            output("Gaston engine installed globally: " + tag)
-        return True
+    release = latest(OFFICIAL_REPOSITORY)
+    tag = release["tag"]
+    if version(tag) <= version(current):
+        output("Gaston is current: " + current)
+        _refresh_project_hooks(root, _current_hook_script(folder), output=output)
+        return 0
 
-    if pending:
-        migrate(root, approve=approve, output=output)
-    else:
-        approve()
+    output("Gaston update available: " + current + " to " + tag)
+    commit = signed_release_commit(OFFICIAL_REPOSITORY, tag)
+    archive = _download(_github_url(OFFICIAL_REPOSITORY, "zipball/" + commit), MAX_ARCHIVE)
+    manifest, payload = _validate_candidate(archive, tag)
+    try:
+        accepted = yesno(
+            "Install verified Gaston update?", default=True, read=confirm, write=output
+        )
+    except EOFError:
+        accepted = False
+    if not accepted:
+        output("Update cancelled; no changes made.")
+        return 0
+
+    stage_verified_release(folder, tag, payload, manifest)
+    manifest_hash = _hash(payload[".agentic/manifest.json"][0])
+    activate(folder, tag, expected_manifest_sha256=manifest_hash)
+    output("Gaston engine installed globally: " + tag)
+    _refresh_project_hooks(
+        root, folder / "versions" / tag / "gaston_engine" / "native_hooks.py",
+        output=output
+    )
     return 0
-
 
 def main(args: list[str], *, root: Path | None = None) -> int:
     try:
