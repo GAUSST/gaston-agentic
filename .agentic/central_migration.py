@@ -124,8 +124,14 @@ def _check_state_merge(source: Path, destination: Path) -> None:
 
 
 def _check_merge_tree(source: Path, destination: Path) -> None:
+    # Validate the legacy source recursively, but do not scan the entire
+    # existing central destination: unrelated project dependencies may
+    # legitimately contain symlinks (for example node_modules/.bin).
+    # Inspect only destination entries corresponding to source entries
+    # below, and refuse a symlink before descending into or writing there.
     _assert_tree_safe(source)
-    _assert_tree_safe(destination)
+    if destination.is_symlink():
+        raise MigrationError("Refusing linked central state: " + str(destination))
     for child in source.iterdir():
         other = destination / child.name
         if other.is_symlink():

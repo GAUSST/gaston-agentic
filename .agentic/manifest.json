@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.6.14",
+  "release": "v1.6.15",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "1e658b6eb80791a6a1bb316adcfa23be96a6ea2664a589f43cc48ba5b40ed5a3",
@@ -115,9 +115,9 @@
     ".agentic/central_uninstall.py": "dd9068a3593b51c900d7625a090d960dc79781cf17bdbdfec9e98383aeb35607",
     ".agentic/test_central_uninstall.py": "583c760b470000494d155d2d318924e5f29ecda9c0b3da1aca5dc80659bc4e5a",
     ".agentic/central_update.py": "dfb5845e7a130057c2c258ac78032e65e4a206e17bf208f4b86aa1300ba65bcc",
-    ".agentic/central_migration.py": "dea433986d1f22c0b6daa0336cab46ee67ddd2eb0e6f9893603790ec85789b2e",
+    ".agentic/central_migration.py": "edc158d64ec69434036bc7239a4bcb908bf47cf8f261cc6d71591c38bb982e53",
     ".agentic/test_central_runtime_acceptance.py": "b3eaac505750537ef9ce91a56a226aae44a12e65e7bae1c6e1bf57123eb225b5",
-    ".agentic/test_central_migration.py": "795f65a9c59f56d04e2d104003ab1af337f85d789e37ac65e3933571a83c1cf2",
+    ".agentic/test_central_migration.py": "98fb3c8350a6e08a3f9567f05851b042b4ff5cf943f9b3e9f2a44eea2f84bee8",
     ".agentic/test_central_update.py": "1208e8f5dc42087c2cc2902e1a08af3117477607ede27c96d6091ed81081fecb",
     ".agentic/central_install.py": "8f28c3935e64ead7e42e2d75518dc7180db13cfe97e4c1c204a48d9ddb2ef5d7",
     ".agentic/test_central_install.py": "f0ebf1e7b7e5b6a007e3db87c6c9efc16da4f2182c1450170bff6cdb10919a6b",
@@ -135,5 +135,5 @@
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b"
   },
-  "build": "1.6.14"
+  "build": "1.6.15"
 }

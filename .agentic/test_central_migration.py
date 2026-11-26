@@ -119,6 +119,36 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertEqual(self.dev("", "--help").returncode, 0)
         self.assertFalse(old.exists())
 
+    def test_unrelated_central_playwright_symlink_is_preserved_during_migration(self):
+        old, central = self._state_only_central()
+        bin_dir = central / "local/playwright-tests/node_modules/.bin"
+        bin_dir.mkdir(parents=True)
+        external = self.root / "playwright-core.cjs"
+        external.write_text("playwright executable target", encoding="utf-8")
+        link = bin_dir / "playwright-core"
+        try:
+            link.symlink_to(external)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("Symlinks unavailable: " + str(exc))
+
+        with patch.dict(os.environ, {"GASTON_GLOBAL_HOME":str(self.root / "global")}), \\
+             patch("updater.latest", return_value={"tag":"v"+metadata.version("gaston-agentic-cli")}):
+            self.assertEqual(
+                central_update.command([], root=self.root, confirm=lambda _: ""),
+                0
+            )
+
+        self.assertFalse(old.exists())
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(link.resolve(strict=True), external)
+        self.assertEqual(link.read_text(encoding="utf-8"), "playwright executable target")
+        self.assertEqual(external.read_text(encoding="utf-8"), "playwright executable target")
+        self.assertEqual(
+            (central / "local/PROJECT_CONTEXT.md").read_text(encoding="utf-8"),
+            "History and decisions\\n"
+        )
+        self.assertTrue((central / "migration-backups/legacy-agentic/local/PROJECT_CONTEXT.md").is_file())
+
     def test_manifest_free_toolkit_source_is_not_migrated(self):
         old, central = self._state_only_central()
         source = old / "eng.py"
