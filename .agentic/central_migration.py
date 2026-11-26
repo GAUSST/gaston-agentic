@@ -269,10 +269,50 @@ def _remove_archived_legacy(old: Path, backup: Path) -> None:
     shutil.rmtree(old)
 
 
-def migrate(root: Path, *, confirmation=input, output=print) -> bool:
+def _is_gaston_source_checkout(root: Path) -> bool:
+    """The source repository's .agentic is distributable Python code, not legacy project state."""
+    pyproject = root / "pyproject.toml"
+    manifest = root / ".agentic" / "manifest.json"
+    cli = root / "gaston_cli.py"
+    workflow = root / ".github" / "workflows" / "native-cli-validation.yml"
+    if any(path.is_symlink() for path in (pyproject, manifest, cli, workflow)):
+        return False
+    if not all(path.is_file() for path in (pyproject, manifest, cli, workflow)):
+        return False
+    try:
+        project = pyproject.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return bool(re.search(r'(?m)^name\s*=\s*["\']gaston-agentic-cli["\']\s*$', project))
+
+
+def migrate(root: Path, *, confirmation=input, output=print):
     root = Path(root).resolve()
     old = root / ".agentic"
     target = root / ".gaston"
+    if _is_gaston_source_checkout(root):
+        if not (target.exists() or target.is_symlink()):
+            output("Gaston source checkout detected. .agentic/ is tracked engine source and will not be moved.")
+            output("Run dev init to create the .gaston project adapter; do not migrate the source package.")
+            return False
+        read_project_marker(root)
+        legacy_db = root / ".gaston-dev-db"
+        if not legacy_db.exists() and not legacy_db.is_symlink():
+            output("Gaston source checkout detected. .agentic/ is tracked engine source and remains in place.")
+            output("No legacy development DB directory needs migration.")
+            return False
+        if _active(root):
+            raise MigrationError("Close all Gaston sessions and managed workers before migration")
+        output("GASTON SOURCE CHECKOUT — DEVELOPMENT DB CONSOLIDATION")
+        output("  .agentic/ is the tracked Python engine package and will remain untouched.")
+        output("  Only .gaston-dev-db/ will move under .gaston/local/dev-db/.")
+        if confirmation("Type MIGRATE GASTON to approve: ").strip() != "MIGRATE GASTON":
+            output("Migration cancelled; no files changed.")
+            return False
+        moved = _move_legacy_dev_db(root)
+        output("Development DB directory consolidated under .gaston/local/dev-db." if moved
+               else "No legacy development DB files needed moving.")
+        return moved
     if not old.exists() and not old.is_symlink():
         if target.exists():
             read_project_marker(root)

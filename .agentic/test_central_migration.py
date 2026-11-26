@@ -155,6 +155,40 @@ class CentralMigrationTests(unittest.TestCase):
         self.assertFalse(folder.exists())
         self.assertTrue((central / "local/dev-db/credentials.json").is_file())
 
+    def test_gaston_source_checkout_keeps_agentic_package_and_only_moves_db(self):
+        (self.root / "pyproject.toml").write_text(
+            '[project]\nname = "gaston-agentic-cli"\nversion = "1.6.11"\n',
+            encoding="utf-8")
+        (self.root / "gaston_cli.py").write_text("from pathlib import Path\n", encoding="utf-8")
+        workflow = self.root / ".github/workflows/native-cli-validation.yml"
+        workflow.parent.mkdir(parents=True)
+        workflow.write_text("name: Gaston native CLI validation\n", encoding="utf-8")
+        central = self.root / ".gaston"
+        central.mkdir()
+        (central / "project.json").write_text(json.dumps({
+            "schema": 1, "kind": "gaston-project",
+            "engine": "gaston-agentic-cli", "created_with": "1.6.11"
+        }), encoding="utf-8")
+        db = self.root / ".gaston-dev-db"
+        db.mkdir(mode=0o700)
+        workspace = hashlib.sha256(str(self.root).encode()).hexdigest()[:20]
+        credentials = {
+            "workspace": workspace, "admin_password": "a" * 48,
+            "development_password": "b" * 48, "readonly_password": "c" * 48
+        }
+        source = db / "credentials.json"
+        source.write_text(json.dumps(credentials), encoding="utf-8")
+        if os.name != "nt":
+            os.chmod(db, 0o700)
+            os.chmod(source, 0o600)
+        result = self.dev("MIGRATE GASTON\n", "migrate")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue((self.root / ".agentic/launcher.py").is_file())
+        self.assertFalse((self.root / ".gaston/migration-backups/legacy-agentic").exists())
+        self.assertFalse(db.exists())
+        self.assertEqual(json.loads((central / "local/dev-db/credentials.json").read_text()),
+                         credentials)
+
     def test_cancel_is_nondestructive(self):
         result = self.dev("not now\n", "migrate")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
