@@ -44,18 +44,18 @@ class RunProcessEncodingTests(unittest.TestCase):
         result, log = self._run_ai_child(code)
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, stdout + "\\n")
-        self.assertEqual(result.stderr, stderr + "\\n")
+        self.assertEqual(result.stdout, stdout + "\n")
+        self.assertEqual(result.stderr, stderr + "\n")
         self.assertIn(stdout, log)
         self.assertIn("[stderr] " + stderr, log)
 
     def test_invalid_utf8_byte_is_replaced_instead_of_killing_reader(self):
-        invalid_bytes = b"bad:\\x9d\\n"
+        invalid_bytes = b"bad:\x9d\n"
         code = "import sys; sys.stdout.buffer.write(" + repr(invalid_bytes) + "); sys.stdout.flush()"
         result, _ = self._run_ai_child(code)
 
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "bad:\ufffd\\n")
+        self.assertEqual(result.stdout, "bad:\ufffd\n")
 
     def test_unexpected_reader_error_stops_child_and_is_reported(self):
         class BrokenStream:
