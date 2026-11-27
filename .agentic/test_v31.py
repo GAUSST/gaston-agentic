@@ -21,7 +21,7 @@ def reply(*, stderr='', code=0, events=None):
         events=[{'type':'thread.started','thread_id':'probe-only'},
                 {'type':'item.completed','item':{'type':'agent_message','text':'GASTON_MODEL_OK'}},
                 {'type':'turn.completed','usage':{'input_tokens':12,'output_tokens':4}}]
-    return subprocess.CompletedProcess([],code,'\n'.join(map(json.dumps,events)),stderr)
+    return {'exit_code':code,'stdout':'\n'.join(map(json.dumps,events)),'stderr':stderr}
 
 
 class ExactModelTests(unittest.TestCase):
@@ -67,24 +67,49 @@ class ExactModelTests(unittest.TestCase):
 
     def test_live_probe_args_and_completion_not_just_exit_code(self):
         def run(cmd,**kwargs):
-            self.assertEqual(cmd[:2],['codex','exec'])
+            self.assertEqual(cmd[0],'exec')
             self.assertIn('--ephemeral',cmd); self.assertIn('--ignore-user-config',cmd)
-            self.assertIn('read-only',cmd); self.assertIn('approval_policy="never"',cmd)
+            self.assertIn('read-only',cmd); self.assertIn("approval_policy='never'",cmd)
             self.assertEqual(cmd[cmd.index('--model')+1],CUSTOM)
-            self.assertIn('model_reasoning_effort="high"',cmd)
+            self.assertIn("model_reasoning_effort='high'",cmd)
             self.assertTrue(Path(kwargs['cwd']).is_dir())
-            self.assertTrue(kwargs['capture_output']); self.assertEqual(kwargs['timeout'],90)
+            self.assertEqual(kwargs['timeout'],mm._CODEX_DIRECT_TIMEOUT)
             self.assertNotIn('shell',kwargs)
             return reply(stderr='Model metadata not found. Using fallback metadata.')
-        with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'),patch.object(mm.subprocess,'run',side_effect=run):
+        with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'),patch.object(mm,'_run_codex_probe',side_effect=run):
             self.assertTrue(mm.direct_codex_check(CUSTOM,'high')[0])
         for result in (reply(code=1),reply(events=[]),reply(events=[{'type':'turn.completed'}]),
                        reply(stderr='falling back to model gpt-5.6-luna'),reply(stderr='reasoning effort not supported'),
                        reply(events=[{'type':'turn.failed','error':{'message':'not supported'}}])):
-            with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'),patch.object(mm.subprocess,'run',return_value=result):
+            with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'),patch.object(mm,'_run_codex_probe',return_value=result):
                 self.assertFalse(mm.direct_codex_check(CUSTOM,'high')[0])
-        with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'),patch.object(mm.subprocess,'run',side_effect=subprocess.TimeoutExpired('codex',90)):
-            self.assertFalse(mm.direct_codex_check(CUSTOM,'high')[0])
+        for reason, expected in [('timeout','timed out'),('execution_failed','could not launch'),
+                                 ('cleanup_failed','cleanup'),('output_limit','output exceeded')]:
+            with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'), \
+                 patch.object(mm,'_run_codex_probe',return_value={'exit_code':None,'reason':reason}):
+                ok, message = mm.direct_codex_check(CUSTOM,'high')
+                self.assertFalse(ok)
+                self.assertIn(expected,message)
+
+    def test_catalog_and_direct_use_shared_native_runner(self):
+        from unittest.mock import Mock
+        import platform_compat as pc
+        fixture={'models':[{'slug':CUSTOM,'supported_reasoning_levels':['high']}]}
+        runner=Mock(side_effect=[{'exit_code':0,'stdout':json.dumps(fixture),'stderr':''},reply()])
+        with patch.object(mm.shutil,'which',return_value='/usr/bin/codex'), \
+             patch.object(pc,'prepare_subprocess',return_value=(['native-launcher'],{'TEST':'yes'},True)) as prepare, \
+             patch.object(pc,'run_verification_process',runner):
+            mm.codex_catalog_details.cache_clear()
+            try:
+                self.assertEqual(mm.codex_catalog_details()[CUSTOM],('high',))
+                self.assertTrue(mm.direct_codex_check(CUSTOM,'high')[0])
+                self.assertEqual(prepare.call_args_list[0].args[0],['/usr/bin/codex','debug','models'])
+                self.assertEqual(prepare.call_args_list[1].args[0][:2],['/usr/bin/codex','exec'])
+                self.assertEqual(runner.call_args_list[0].args[0],['native-launcher'])
+                self.assertEqual(runner.call_args_list[0].kwargs['env'],{'TEST':'yes'})
+                self.assertEqual(runner.call_args_list[1].kwargs['timeout'],mm._CODEX_DIRECT_TIMEOUT)
+            finally:
+                mm.codex_catalog_details.cache_clear()
 
     def test_menu_save_then_launch_uses_direct_evidence(self):
         with tempfile.TemporaryDirectory() as td:
@@ -135,7 +160,7 @@ class ExcludedEffortTests(unittest.TestCase):
         self.assertEqual(shown,[f'{i}. {e.title()}' for i,e in enumerate(self.permitted,1)])
         self.assertEqual(output.getvalue().count('Invalid reasoning level'),4)
         probe.assert_called_once_with(CUSTOM,'max')
-        with patch.object(mm.subprocess,'run',side_effect=AssertionError('must not execute')):
+        with patch.object(mm,'_run_codex_probe',side_effect=AssertionError('must not execute')):
             for level in self.excluded:
                 self.assertFalse(mm.direct_codex_check(CUSTOM,level)[0])
 

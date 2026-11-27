@@ -108,18 +108,44 @@ def parse_codex_catalog(value, *, include_hidden=False):
     return catalog
 
 
+# A catalog can contain many models and lengthy descriptions. Do not parse a
+# truncated result as authoritative metadata or direct execution evidence.
+_CODEX_CATALOG_TIMEOUT = 30
+_CODEX_DIRECT_TIMEOUT = 180
+_CODEX_OUTPUT_LIMIT = 2 * 1024 * 1024
+
+
+def _run_codex_probe(argv, *, cwd, timeout):
+    """Use the same native launcher and bounded owned runner as verification.
+
+    On Windows npm's Codex entry point is often a .cmd shim. Running the bare
+    command through subprocess.run is not equivalent to launching it in a shell.
+    """
+    from platform_compat import prepare_subprocess, run_verification_process
+    try:
+        executable = shutil.which('codex')
+        if not executable:
+            return {'exit_code': None, 'reason': 'cli_unavailable'}
+        command, env, _ = prepare_subprocess([executable, *argv])
+        result = run_verification_process(command, cwd=cwd, env=env, timeout=timeout,
+                                          output_limit=_CODEX_OUTPUT_LIMIT)
+        if any(len(result.get(stream, '')) >= _CODEX_OUTPUT_LIMIT for stream in ('stdout', 'stderr')):
+            return {'exit_code': None, 'reason': 'output_limit'}
+        return result
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError):
+        return {'exit_code': None, 'reason': 'execution_failed'}
+
+
 @lru_cache(maxsize=1)
 def codex_catalog_details():
     """Read the local Codex CLI catalog without making a model inference call."""
-    if not shutil.which('codex'):
-        return {}
     try:
-        result = subprocess.run(['codex', 'debug', 'models'], capture_output=True,
-                                text=True, timeout=25, check=False)
-        if result.returncode:
+        with tempfile.TemporaryDirectory(prefix='gaston-codex-catalog-') as tmp:
+            result = _run_codex_probe(['debug', 'models'], cwd=tmp, timeout=_CODEX_CATALOG_TIMEOUT)
+        if result.get('exit_code') != 0 or result.get('reason'):
             return {}
-        return parse_codex_catalog(json.loads(result.stdout), include_hidden=True)
-    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return parse_codex_catalog(json.loads(result.get('stdout', '')), include_hidden=True)
+    except (OSError, ValueError):
         return {}
 
 
@@ -305,34 +331,46 @@ def direct_codex_check(model, effort):
         return False, 'Invalid model or reasoning level.'
     if not shutil.which('codex'):
         return False, 'Codex CLI is not available for the direct check.'
-    cmd = ['codex', 'exec', '--json', '--ephemeral', '--skip-git-repo-check',
-           '--ignore-user-config', '--sandbox', 'read-only', '-c', 'approval_policy="never"',
-           '--model', model, '-c', f'model_reasoning_effort={json.dumps(effort)}',
+    # TOML literal strings avoid embedded double quotes being stripped by
+    # Windows PowerShell/.cmd native argument marshaling. Values are allowlisted.
+    cmd = ['exec', '--json', '--ephemeral', '--skip-git-repo-check',
+           '--ignore-user-config', '--sandbox', 'read-only', '-c', "approval_policy='never'",
+           '--model', model, '-c', f"model_reasoning_effort='{effort}'",
            'Reply with only GASTON_MODEL_OK. Do not use tools or inspect files.']
     try:
         with tempfile.TemporaryDirectory(prefix='gaston-model-check-') as tmp:
-            result = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True,
-                                    timeout=90, check=False)
-    except (OSError, subprocess.TimeoutExpired):
-        return False, 'Codex direct check could not complete (CLI error or timeout).'
+            result = _run_codex_probe(cmd, cwd=tmp, timeout=_CODEX_DIRECT_TIMEOUT)
+    except OSError:
+        return False, 'Codex direct check could not create its temporary workspace.'
+    reason = result.get('reason')
+    if reason == 'timeout':
+        return False, f'Codex direct check timed out after {_CODEX_DIRECT_TIMEOUT} seconds; model access is unverified. Retry or check Codex connectivity.'
+    if reason == 'cli_unavailable':
+        return False, 'Codex CLI is not available for the direct check.'
+    if reason == 'cleanup_failed':
+        return False, 'Codex direct check could not confirm process cleanup; model access is unverified.'
+    if reason == 'output_limit':
+        return False, 'Codex direct check output exceeded its verification limit; model access is unverified.'
+    if reason or result.get('exit_code') is None:
+        return False, 'Codex direct check could not launch or complete the CLI; model access is unverified.'
     events = []
-    for line in result.stdout.splitlines():
+    for line in result.get('stdout', '').splitlines():
         try:
             event = json.loads(line)
             if isinstance(event, dict): events.append(event)
         except ValueError:
             continue
     failures = [e for e in events if e.get('type') in ('error', 'turn.failed')]
-    warnings = result.stderr.lower() + ' ' + ' '.join(str(e.get('message','')) for e in events if e.get('type') in ('warning','error')).lower()
+    warnings = result.get('stderr', '').lower() + ' ' + ' '.join(str(e.get('message','')) for e in events if e.get('type') in ('warning','error')).lower()
     # Generic *metadata* fallback is normal for an unlisted model. Actual
     # model/effort replacement is not evidence for the requested pair.
     substitution = re.search(r'(?:fall(?:ing)? back to|switch(?:ing|ed) to) (?:the )?(?:default |fallback )?(?:model(?! metadata)|reasoning|gpt-)|using (?:the )?(?:default|fallback) (?:model(?! metadata)|reasoning)|(?:clamp(?:ed|ing)|downgrad(?:ed|ing)).{0,60}(?:effort|model)|(?:effort|model).{0,60}(?:clamp(?:ed|ing)|downgrad(?:ed|ing)|was adjusted)|reasoning effort.{0,80}(?:unsupported|not supported|adjusted)', warnings)
-    if result.returncode or failures or substitution:
+    if result.get('exit_code') != 0 or failures or substitution:
         detail = ' '.join(str(e.get('message') or e.get('error') or '') for e in failures)
         # Do not echo arbitrary CLI diagnostics (may contain account details).
         if re.search(r'reasoning|effort', detail+' '+warnings, re.I):
             return False, 'Codex rejected or could not verify the requested reasoning level.'
-        return False, 'Codex did not accept the requested model/effort (model, account, or CLI error).'
+        return False, f'Codex did not complete the requested model/effort (CLI exit {result.get("exit_code")}; model, account, or CLI error).'
     completed = any(e.get('type') == 'turn.completed' for e in events)
     answer = any(e.get('type') == 'item.completed' and isinstance(e.get('item'), dict)
                  and e['item'].get('type') == 'agent_message'
@@ -360,7 +398,7 @@ def pick_role_model(provider, role, previous='', *, catalog=None, config=None, l
         old = config.get('reasoning', {}).get(provider+'_'+role, '')
         choice = pick_effort(provider, role, candidate, old, levels=CODEX_EFFORT_ORDER, lang=lang, candidate_only=True)
         if choice not in verified_efforts(verified, candidate):
-            print(f'    Checking {candidate} / {choice} directly in Codex...', flush=True)
+            print(f'    Checking {candidate} / {choice} directly in Codex (up to {_CODEX_DIRECT_TIMEOUT}s)...', flush=True)
             ok, reason = direct_codex_check(candidate, choice)
             if not ok: return reason
             if not isinstance(config.get('codex_verified_pairs'), dict):
