@@ -497,6 +497,108 @@ def extend_item_scope(root,plan,item,paths,*,reason):
     return item['paths']
 
 
+def normalize_private_scope_state(root,folder):
+    """Remove false scope blockers from reserved Gaston paths in older task records.
+
+    This is a narrow compatibility repair, not task acceptance: it never removes
+    application paths, runs tests, sets lead_verified, or closes a task.
+    """
+    from workspace_git import is_excluded_path
+    folder=Path(folder)
+    state=read_record(folder/'state.json')
+    if state.get('stage') in RUNNING:
+        return False
+    worker=read_record(folder/'worker.json')
+    if worker:
+        started=worker.get('started_at')
+        finished=read_record(folder/'worker-finished.json').get('finished_at')
+        if (not isinstance(started,(int,float)) or not isinstance(finished,(int,float))
+                or finished < started):
+            return False
+    build=read_record(folder/'build.json')
+    if not build:
+        return False
+
+    removed=set()
+    def filter_paths(value):
+        if not isinstance(value,list):
+            return value
+        kept=[]
+        for name in value:
+            if isinstance(name,str) and is_excluded_path(name):
+                removed.add(name)
+            else:
+                kept.append(name)
+        return kept
+
+    old_pending=build.get('scope_review_required') or []
+    old_reported=build.get('out_of_scope_reported') or []
+    pending=filter_paths(old_pending)
+    reported=filter_paths(old_reported)
+    changed=filter_paths(build.get('changed_files') or [])
+    revision_paths=filter_paths(build.get('revision_changed_files') or [])
+    lead_paths_reported=filter_paths(build.get('lead_changed_files') or [])
+    if not removed:
+        return False
+
+    observation_path=folder/'scope-observation.json'
+    observation=read_record(observation_path)
+    if observation:
+        for key in ('observed_outside_scope','reported_outside_scope','pending_paths','matching_lead_ledger'):
+            if key in observation:
+                observation[key]=filter_paths(observation[key])
+        put(observation_path,observation)
+
+    concurrent_path=folder/'concurrent-observed-paths.json'
+    concurrent=read_record(concurrent_path)
+    if concurrent and 'outside_builder_scope' in concurrent:
+        concurrent['outside_builder_scope']=filter_paths(concurrent['outside_builder_scope'])
+        put(concurrent_path,concurrent)
+
+    build.update(changed_files=changed,scope_review_required=pending,
+                 out_of_scope_reported=reported)
+    if 'revision_changed_files' in build:
+        build['revision_changed_files']=revision_paths
+    if 'lead_changed_files' in build:
+        build['lead_changed_files']=lead_paths_reported
+
+    restored=False
+    if old_pending or (old_reported and not reported):
+        prior_questions=build.get('scope_prior_questions')
+        if not isinstance(prior_questions,list):
+            scope_question=build.get('scope_question')
+            prior_questions=[q for q in (build.get('questions') or [])
+                             if isinstance(q,str) and q!=scope_question]
+        prior_status=build.get('scope_prior_status',build.get('status','blocked'))
+        if pending:
+            scope_question='Scope reconciliation needed: '+', '.join(pending)
+            build['scope_question']=scope_question
+            build['questions']=prior_questions+[scope_question]
+            build['status']='blocked'
+            state={**state,'stage':'needs_lead_decision','questions':build['questions'],
+                   'clarification_only':False}
+        else:
+            build['questions']=prior_questions
+            build['status']=prior_status
+            build.pop('scope_question',None)
+            state={**state,
+                   'stage':'awaiting_lead_review' if prior_status=='done' and not prior_questions else 'needs_lead_decision',
+                   'questions':prior_questions,'clarification_only':False}
+        restored=True
+
+    put(folder/'build.json',build)
+    if restored:
+        put(folder/'state.json',state)
+    audit_path=folder/'scope-normalization.json'
+    audit=read_record(audit_path)
+    events=audit.get('events',[]) if isinstance(audit.get('events'),list) else []
+    events.append({'policy':'reserved-private-paths-v1','removed_paths':sorted(removed),
+                   'reason':'Reserved Gaston/runtime state is not application scope or Builder output.',
+                   'recorded_at':time.time(),'restored_prior_stage':restored})
+    put(audit_path,{'events':events})
+    return True
+
+
 def _idle_task(root,tid):
     if not isinstance(tid,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',tid):raise ValueError('Invalid task ID')
     folder=project_state(root)/'runs'/tid
@@ -504,6 +606,8 @@ def _idle_task(root,tid):
     if folder.is_symlink() or not task or not state:raise ValueError('Unknown task')
     if state.get('stage') in RUNNING or any(x['task_id']==tid for x in active_builders(root)) or state.get('lead_verified') or state.get('stage') in ('slice_reviewed','abandoned','ready_for_human_release_review'):
         raise ValueError('Task is active or already closed')
+    normalize_private_scope_state(root,folder)
+    task=read_record(folder/'task.json');state=read_record(folder/'state.json')
     return folder,task,state
 
 
@@ -580,21 +684,34 @@ def validate_task_scope(root,folder):
 
 
 def scope_observation(root,folder,before,after,scope,reported):
-    """A Git difference is evidence of change, not proof of which agent wrote it."""
-    pending=set(reported or []);observed=[];known=[]
-    if isinstance(before,dict) and isinstance(after,dict) and scope:
-        observed=sorted(name for name in set(before)|set(after) if before.get(name)!=after.get(name) and not within(name,scope))
+    """Compare application paths only; Gaston's own state is never app-scope work."""
+    from workspace_git import is_excluded_path
+    clean_reported={name for name in (reported or [])
+                    if isinstance(name,str) and not is_excluded_path(name)}
+    clean_before=({name:value for name,value in before.items()
+                   if isinstance(name,str) and not is_excluded_path(name)}
+                  if isinstance(before,dict) else before)
+    clean_after=({name:value for name,value in after.items()
+                  if isinstance(name,str) and not is_excluded_path(name)}
+                 if isinstance(after,dict) else after)
+    pending=set(clean_reported);observed=[];known=[]
+    if isinstance(clean_before,dict) and isinstance(clean_after,dict) and scope:
+        observed=sorted(name for name in set(clean_before)|set(clean_after)
+                        if clean_before.get(name)!=clean_after.get(name) and not within(name,scope))
         begun=read_record(folder/'worker.json').get('started_at',0)
         if not isinstance(begun,(int,float)):begun=float('inf')
         for run in (project_state(root)/'runs').glob('*'):
             if run.is_symlink() or not run.is_dir():continue
             for name,entry in read_record(run/'lead-edits.json').get('files',{}).items():
-                if name in observed and isinstance(entry,dict) and isinstance(entry.get('edited_at'),(int,float)) and entry['edited_at']>=begun and entry.get('after_sha256') and entry['after_sha256']==after.get(name):known.append(name)
+                if name in observed and isinstance(entry,dict) and isinstance(entry.get('edited_at'),(int,float)) and entry['edited_at']>=begun and entry.get('after_sha256') and entry['after_sha256']==clean_after.get(name):known.append(name)
         pending.update(set(observed)-set(known))
-    record={'attempt':read_record(folder/'worker.json').get('attempt'),'observed_outside_scope':observed,'matching_lead_ledger':sorted(set(known)),'reported_outside_scope':sorted(set(reported or [])),'pending_paths':sorted(pending),'git_observation_available':isinstance(after,dict),'recorded_at':time.time(),'note':'Unattributed observed changes alone are not proof of Builder misconduct.'}
+    record={'attempt':read_record(folder/'worker.json').get('attempt'),
+            'observed_outside_scope':observed,'matching_lead_ledger':sorted(set(known)),
+            'reported_outside_scope':sorted(clean_reported),'pending_paths':sorted(pending),
+            'git_observation_available':isinstance(clean_after,dict),'recorded_at':time.time(),
+            'note':'Unattributed application changes alone are not proof of Builder misconduct; private Gaston/runtime state is excluded.'}
     put(folder/'scope-observation.json',record)
     return record
-
 
 def reconcile_scope(root,tid,decisions):
     folder,task,state=_idle_task(root,tid);build=read_record(folder/'build.json')

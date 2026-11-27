@@ -48,7 +48,7 @@ def _repo(root: Path, project: dict | None, repo_path: str) -> Path:
 
 
 def _status_entries(repo: Path) -> list[dict]:
-    status = _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all')
+    status = _git(repo, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', *workspace_git.git_exclusion_pathspecs())
     if status.returncode != 0:
         raise ValueError('Git status failed: ' + _text(status.stderr, 500))
     fields = status.stdout.split(b'\0')
@@ -115,7 +115,7 @@ def inspect(root: Path, project: dict | None = None, *, repository: str | None =
                     'counts': counts, 'changed_files_total': len(changes),
                     'changes': changes[:MAX_FILES], 'truncated': len(changes) > MAX_FILES}
             if diff:
-                patch = _git(repo, 'diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD') if head.returncode == 0 else None
+                patch = _git(repo, 'diff', '--no-ext-diff', '--no-textconv', '--binary', 'HEAD', '--', '.', *workspace_git.git_exclusion_pathspecs()) if head.returncode == 0 else None
                 if patch is not None and patch.returncode == 0:
                     item['diff'] = _text(patch.stdout)
                     item['diff_truncated'] = len(patch.stdout) > MAX_DIFF
@@ -171,8 +171,8 @@ def _literal_paths(repo: Path, paths: list[str]) -> list[str]:
             raise ValueError('Path escapes the selected repository')
         if candidate.is_dir():
             raise ValueError('Provide individual file paths; directory-wide commits are not allowed')
-        if '.git' in path.parts:
-            raise ValueError('Git internal files are excluded')
+        if workspace_git.is_excluded_path(path.as_posix()):
+            raise ValueError('Private Gaston/runtime and generated paths are excluded from application Git operations')
         result.append(path.as_posix())
     if len(set(result))!=len(result):
         raise ValueError('Duplicate commit paths')

@@ -12,9 +12,21 @@ from pathlib import Path
 import shutil
 import subprocess
 
-EXCLUDED = {'.git', '.agentic', '.gaston', '.claude', '.agents', '.dart_tool', 'node_modules',
+EXCLUDED = {'.git', '.agentic', '.gaston', '.claude', '.agents', '.codex', '.ssh', '.env', '.dart_tool', 'node_modules',
             'build', 'dist', '.gradle', '.idea', 'target', '.venv', 'venv'}
 MAX_UNTRACKED_BYTES = 15 * 1024 * 1024
+
+
+def is_excluded_path(relative: str | os.PathLike) -> bool:
+    """Whether a workspace-relative Git path belongs to private/tool or generated state."""
+    value = os.fspath(relative).replace('\\', '/')
+    return any(part in EXCLUDED for part in value.split('/') if part not in ('', '.'))
+
+
+def git_exclusion_pathspecs() -> list[str]:
+    """Git pathspecs excluding reserved directories and private state at every depth."""
+    return [pattern for name in sorted(EXCLUDED)
+            for pattern in (f':(exclude,glob)**/{name}', f':(exclude,glob)**/{name}/**')]
 
 
 def _run(args, *, cwd: Path, timeout=30):
@@ -112,14 +124,15 @@ def clean(root: Path, project: dict | None = None) -> bool:
     repos, missing = tracked_roots(root, project)
     if not repos or missing or not baseline_ready(repos):
         raise ValueError('No usable Git baseline for every configured application root; run ./dev init')
+    excludes = git_exclusion_pathspecs()
     for repo in repos:
-        state = _run(['status', '--porcelain', '--untracked-files=normal'], cwd=repo)
+        state = _run(['status', '--porcelain', '--untracked-files=normal',
+                      '--', '.', *excludes], cwd=repo)
         if state is None or state.returncode:
             raise ValueError(f'Cannot inspect Git working tree: {repo}')
         if state.stdout.strip():
             return False
     return True
-
 
 def _untracked(repo: Path) -> list[tuple[bytes, Path]] | None:
     result = _run(['ls-files', '--others', '--exclude-standard', '-z'], cwd=repo)
@@ -127,6 +140,8 @@ def _untracked(repo: Path) -> list[tuple[bytes, Path]] | None:
         return None
     items = []
     for name in sorted(x for x in result.stdout.split(b'\0') if x):
+        if is_excluded_path(os.fsdecode(name)):
+            continue
         target = (repo / os.fsdecode(name)).resolve()
         if not target.is_relative_to(repo.resolve()) or not target.is_file():
             return None
@@ -135,55 +150,59 @@ def _untracked(repo: Path) -> list[tuple[bytes, Path]] | None:
         items.append((name, target))
     return items
 
-
 def fingerprint(root: Path, project: dict | None = None, *, review_documents=()) -> str | None:
-    """Hash changes from all nested repos, including previously untracked files."""
+    """Hash application changes only; private Gaston/runtime state is never evidence."""
+    root = Path(root).resolve()
     repos, missing = tracked_roots(root, project)
     if not repos or missing or not baseline_ready(repos):
         return None
-    digest = hashlib.sha256(b'agentic-git-workspace-v2\0')
+    digest = hashlib.sha256(b'agentic-git-workspace-v3\0')
+    excludes = git_exclusion_pathspecs()
     for repo in repos:
-        digest.update(str(repo.relative_to(root.resolve())).encode() + b'\0')
+        digest.update(str(repo.relative_to(root)).encode() + b'\0')
         head = _run(['rev-parse', 'HEAD'], cwd=repo)
-        excludes=[]
+        review_excludes=[]
         if review_documents:
             from acceptance_audit import review_only_document
-            names=_run(['diff','--no-renames','--name-only','-z','HEAD'],cwd=repo)
+            names=_run(['diff','--no-renames','--name-only','-z','HEAD','--','.',*excludes],cwd=repo)
             if names is None or names.returncode:return None
             for raw in names.stdout.split(b'\0'):
                 name=os.fsdecode(raw)
-                if name and (repo/name).relative_to(root.resolve()).as_posix() in review_documents and review_only_document(name) and not (repo/name).is_symlink() and not (repo/name).is_dir():excludes.append(':(exclude,literal)'+name)
-        diff = _run(['diff', '--no-ext-diff', '--binary', 'HEAD', *(['--','.',*excludes] if excludes else [])], cwd=repo)
+                if name and not is_excluded_path(name) and (repo/name).relative_to(root).as_posix() in review_documents and review_only_document(name) and not (repo/name).is_symlink() and not (repo/name).is_dir():
+                    review_excludes.append(':(exclude,literal)'+name)
+        diff = _run(['diff', '--no-ext-diff', '--binary', 'HEAD',
+                     '--', '.', *excludes, *review_excludes], cwd=repo)
         changes = _untracked(repo)
         if head is None or diff is None or head.returncode or diff.returncode or changes is None:
             return None
         digest.update(head.stdout)
         digest.update(diff.stdout)
         for name, path in changes:
-            relative=(repo/os.fsdecode(name)).relative_to(root.resolve()).as_posix()
+            relative=(repo/os.fsdecode(name)).relative_to(root).as_posix()
+            if is_excluded_path(relative):
+                continue
             if relative in review_documents and review_only_document(relative) and not (repo/os.fsdecode(name)).is_symlink():continue
             digest.update(b'\0untracked\0' + name)
             digest.update(path.read_bytes())
     return digest.hexdigest()
 
-
 def existing_changes(root: Path, project: dict | None = None) -> dict[str, str]:
-    """Snapshot existing tracked/untracked edits without requiring a clean tree.
-
-    Values are content digests, or explicit markers for deleted/non-regular
-    paths. This is diagnostic evidence, not an ownership or staging grant.
-    """
+    """Snapshot application edits only, excluding Gaston and generated private state."""
     root = Path(root).resolve()
     repos, missing = tracked_roots(root, project)
     if not repos or missing or not baseline_ready(repos):
         raise ValueError('Cannot safely inspect selected Git repositories')
     baseline: dict[str, str] = {}
+    excludes = git_exclusion_pathspecs()
     for repo in repos:
-        changed = _run(['diff', '--name-only', '-z', 'HEAD'], cwd=repo)
+        changed = _run(['diff', '--name-only', '-z', 'HEAD', '--', '.', *excludes], cwd=repo)
         others = _run(['ls-files', '--others', '--exclude-standard', '-z'], cwd=repo)
         if changed is None or others is None or changed.returncode or others.returncode:
             raise ValueError(f'Cannot inspect Git changes in {repo}')
         for raw in set(x for output in (changed.stdout, others.stdout) for x in output.split(b'\0') if x):
+            relative=os.fsdecode(raw).replace('\\','/')
+            if is_excluded_path(relative):
+                continue
             path = repo / os.fsdecode(raw)
             # Never follow symlinks when reading pre-existing user content.
             if path.is_symlink():
@@ -201,12 +220,13 @@ def existing_changes(root: Path, project: dict | None = None) -> dict[str, str]:
             baseline[path.relative_to(root).as_posix()] = value
     return dict(sorted(baseline.items()))
 
-
 def changed_existing_files(root: Path, baseline: dict[str, str]) -> list[str]:
-    """Report pre-existing files modified/deleted by the new task, never block it."""
+    """Report application files changed by this task, ignoring private runtime paths."""
     root = Path(root).resolve()
     changed = []
     for relative, before in baseline.items():
+        if is_excluded_path(relative):
+            continue
         path = root / relative
         if path.is_symlink():
             after = 'symlink:' + os.readlink(path)
@@ -224,7 +244,6 @@ def changed_existing_files(root: Path, baseline: dict[str, str]) -> list[str]:
             changed.append(relative)
     return changed
 
-
 def safe_test_only_baseline(root: Path, project: dict | None = None) -> dict | None:
     """Capture narrow, pre-existing untracked tests without treating other edits as trusted.
 
@@ -237,7 +256,7 @@ def safe_test_only_baseline(root: Path, project: dict | None = None) -> dict | N
         return None
     manifest = {}
     for repo in repos:
-        tracked = _run(['diff', '--name-only', '-z', 'HEAD'], cwd=repo)
+        tracked = _run(['diff', '--name-only', '-z', 'HEAD', '--', '.', *git_exclusion_pathspecs()], cwd=repo)
         if tracked is None or tracked.returncode or tracked.stdout:
             return None
         files = _untracked(repo)
@@ -269,16 +288,18 @@ def baseline_unchanged(root: Path, baseline: dict) -> bool:
 
 def review_evidence(root: Path, project: dict | None = None, *, max_diff=750000,
                     max_manifest=50000) -> tuple[str, str]:
-    """Collect labeled per-repo changes, including bounded text untracked files."""
+    """Collect application changes only; private Gaston state is not review material."""
     root = Path(root).resolve()
     repos, missing = tracked_roots(root, project)
     if not repos or missing or not baseline_ready(repos):
         raise ValueError('Cannot collect review evidence: selected code roots need a Git baseline')
     patches, manifests = [], []
+    excludes=git_exclusion_pathspecs()
     for repo in repos:
         label = repo.relative_to(root).as_posix()
-        diff = _run(['diff', '--no-ext-diff', '--binary', 'HEAD'], cwd=repo)
-        status = _run(['status', '--porcelain', '--untracked-files=normal'], cwd=repo)
+        diff = _run(['diff', '--no-ext-diff', '--binary', 'HEAD', '--', '.', *excludes], cwd=repo)
+        status = _run(['status', '--porcelain', '--untracked-files=normal',
+                       '--', '.', *excludes], cwd=repo)
         files = _untracked(repo)
         if diff is None or status is None or diff.returncode or status.returncode or files is None:
             raise ValueError(f'Cannot collect changes in {repo}')
@@ -298,19 +319,16 @@ def review_evidence(root: Path, project: dict | None = None, *, max_diff=750000,
                             fromfile='/dev/null', tofile=f'{label}/{rel}')))
     return '\n'.join(patches)[:max_diff], '\n'.join(manifests)[:max_manifest]
 
-
 def changed_paths(root: Path, project: dict | None = None) -> list[str]:
-    """Tracked changes since HEAD plus untracked sources, labeled by repo.
-
-    Failure to collect changes is an error, not proof that nothing changed.
-    """
+    """List application source changes only, excluding private/runtime state."""
     root = Path(root).resolve()
     repos, missing = tracked_roots(root, project)
     if not repos or missing or not baseline_ready(repos):
         raise ValueError('Cannot select risk-based tests without usable Git baseline')
     changes = set()
+    excludes=git_exclusion_pathspecs()
     for repo in repos:
-        diff = _run(['diff', '--name-only', '-z', 'HEAD'], cwd=repo)
+        diff = _run(['diff', '--name-only', '-z', 'HEAD', '--', '.', *excludes], cwd=repo)
         others = _run(['ls-files', '--others', '--exclude-standard', '-z'], cwd=repo)
         if diff is None or others is None or diff.returncode or others.returncode:
             raise ValueError(f'Cannot list source changes: {repo}')
@@ -318,6 +336,7 @@ def changed_paths(root: Path, project: dict | None = None) -> list[str]:
             for raw in value.split(b'\0'):
                 if raw:
                     rel = (repo / os.fsdecode(raw)).resolve()
-                    if rel.is_relative_to(root):
+                    if rel.is_relative_to(root) and not is_excluded_path(rel.relative_to(root).as_posix()):
                         changes.add(rel.relative_to(root).as_posix())
     return sorted(changes)
+

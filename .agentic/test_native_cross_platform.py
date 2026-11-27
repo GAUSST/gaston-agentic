@@ -11,8 +11,142 @@ import platform_compat as pc
 ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT))
 import gaston_cli
+import workspace_git
+import orchestration as orch
 
 class NativePlatformTests(unittest.TestCase):
+    def test_gaston_runtime_state_is_excluded_from_application_scope(self):
+        from project_layout import project_state
+
+        with tempfile.TemporaryDirectory(prefix='gaston scope exclusion ') as td:
+            root = Path(td).resolve()
+            def git(*args):
+                result = subprocess.run(['git', *args], cwd=root, capture_output=True,
+                                        text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                return result.stdout.strip()
+
+            git('init', '-q')
+            git('config', 'user.name', 'Gaston scope test')
+            git('config', 'user.email', 'gaston-scope@example.invalid')
+            app = root / 'backend' / 'src' / 'Payment.java'
+            app.parent.mkdir(parents=True)
+            app.write_text('class Payment {}\n', encoding='utf-8')
+            runtime = root / '.gaston'
+            runtime.mkdir()
+            tracked_runtime = runtime / 'tracked-state.json'
+            tracked_runtime.write_text('{"state":"initial"}\n', encoding='utf-8')
+            git('add', '--all')
+            git('commit', '-m', 'fixture baseline')
+
+            baseline_fingerprint = workspace_git.fingerprint(root)
+            tracked_runtime.write_text('{"state":"updated"}\n', encoding='utf-8')
+            task_runtime = runtime / 'runs' / 'delegated-task'
+            task_runtime.mkdir(parents=True)
+            for index in range(12):
+                (task_runtime / f'internal-{index:02d}.json').write_text(
+                    '{"internal":true}\n', encoding='utf-8')
+
+            self.assertEqual(workspace_git.existing_changes(root), {})
+            self.assertEqual(workspace_git.changed_paths(root), [])
+            self.assertTrue(workspace_git.clean(root))
+            self.assertEqual(workspace_git.fingerprint(root), baseline_fingerprint)
+            diff, manifest = workspace_git.review_evidence(root)
+            self.assertNotIn('.gaston', diff)
+            self.assertNotIn('.gaston', manifest)
+
+            app.write_text('class Payment { int amount = 1; }\n', encoding='utf-8')
+            self.assertEqual(list(workspace_git.existing_changes(root)), ['backend/src/Payment.java'])
+            self.assertEqual(workspace_git.changed_paths(root), ['backend/src/Payment.java'])
+            self.assertFalse(workspace_git.clean(root))
+
+            folder = project_state(root) / 'runs' / 'scope-filter-task'
+            folder.mkdir(parents=True)
+            orch.put(folder / 'worker.json', {'attempt': 'a' * 32, 'started_at': 1})
+            internal = '.gaston/runs/delegated-task/internal-00.json'
+            after = {internal: 'internal-hash', 'backend/src/Payment.java': 'app-hash'}
+            observation = orch.scope_observation(
+                root, folder, {}, after, ['backend/src/Payment.java'], [internal])
+            self.assertEqual(observation['reported_outside_scope'], [])
+            self.assertEqual(observation['observed_outside_scope'], [])
+            self.assertEqual(observation['pending_paths'], [])
+
+            after['backend/src/Other.java'] = 'genuine-outside-change'
+            observation = orch.scope_observation(
+                root, folder, {}, after, ['backend/src/Payment.java'], [internal])
+            self.assertEqual(observation['observed_outside_scope'], ['backend/src/Other.java'])
+            self.assertEqual(observation['pending_paths'], ['backend/src/Other.java'])
+
+    def test_legacy_scope_blocker_auto_clears_only_reserved_gaston_paths(self):
+        import json
+        import verification_mcp as vm
+        from project_layout import project_state
+
+        with tempfile.TemporaryDirectory(prefix='gaston legacy scope repair ') as td:
+            root=Path(td).resolve()
+            tasks=project_state(root)/'runs'
+            tasks.mkdir(parents=True)
+            private=[f'.gaston/runs/old-task/internal-{i:02d}.json' for i in range(12)]
+            app='backend/src/Payment.java'
+
+            def make_task(task_id,pending):
+                folder=tasks/task_id
+                folder.mkdir()
+                question='Scope reconciliation needed: '+', '.join(pending)
+                orch.put(folder/'task.json',{'owner':'builder','write_scope':[app]})
+                orch.put(folder/'worker.json',{'attempt':'a'*32,'started_at':1})
+                orch.put(folder/'worker-finished.json',{'finished_at':2})
+                orch.put(folder/'state.json',{'stage':'needs_lead_decision','questions':[question]})
+                orch.put(folder/'build.json',{
+                    'status':'blocked','questions':[question],'changed_files':[app,*private],
+                    'revision_changed_files':[app,*private],
+                    'scope_review_required':pending,'out_of_scope_reported':pending,
+                    'scope_prior_status':'done','scope_prior_questions':[],
+                    'scope_question':question})
+                orch.put(folder/'scope-observation.json',{
+                    'observed_outside_scope':pending,'reported_outside_scope':pending,
+                    'pending_paths':pending,'matching_lead_ledger':[]})
+                return folder
+
+            old_root=vm.ROOT
+            vm.ROOT=root
+            try:
+                folder=make_task('scope-filter-legacy',private)
+                self.assertEqual(vm._task_folder('scope-filter-legacy'),folder)
+                build=orch.read_record(folder/'build.json')
+                state=orch.read_record(folder/'state.json')
+                self.assertEqual(build['scope_review_required'],[])
+                self.assertEqual(build['out_of_scope_reported'],[])
+                self.assertEqual(build['changed_files'],[app])
+                self.assertEqual(build['revision_changed_files'],[app])
+                self.assertEqual(build['status'],'done')
+                self.assertEqual(build['questions'],[])
+                self.assertEqual(state['stage'],'awaiting_lead_review')
+                self.assertFalse(state.get('lead_verified',False))
+                audit=orch.read_record(folder/'scope-normalization.json')
+                self.assertEqual(set(audit['events'][-1]['removed_paths']),set(private))
+
+                real_outside='backend/src/Other.java'
+                mixed=make_task('scope-filter-mixed',private+[real_outside])
+                self.assertEqual(vm._task_folder('scope-filter-mixed'),mixed)
+                build=orch.read_record(mixed/'build.json')
+                state=orch.read_record(mixed/'state.json')
+                self.assertEqual(build['scope_review_required'],[real_outside])
+                self.assertEqual(build['out_of_scope_reported'],[real_outside])
+                self.assertEqual(build['changed_files'],[app])
+                self.assertEqual(build['status'],'blocked')
+                self.assertEqual(state['stage'],'needs_lead_decision')
+                self.assertEqual(build['scope_question'],'Scope reconciliation needed: '+real_outside)
+
+                stale=make_task('scope-filter-stale-worker',private)
+                orch.put(stale/'worker.json',{'attempt':'a'*32,'started_at':10})
+                orch.put(stale/'worker-finished.json',{'finished_at':2})
+                self.assertEqual(vm._task_folder('scope-filter-stale-worker'),stale)
+                self.assertEqual(orch.read_record(stale/'build.json')['scope_review_required'],private)
+                self.assertEqual(orch.read_record(stale/'state.json')['stage'],'needs_lead_decision')
+            finally:
+                vm.ROOT=old_root
+
     @unittest.skipUnless(os.name == 'nt', 'Windows venv redirector integration')
     def test_real_venv_worker_claims_reserved_launcher_pid(self):
         import json
