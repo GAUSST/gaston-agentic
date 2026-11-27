@@ -10,7 +10,7 @@ import eng
 
 
 class RunProcessEncodingTests(unittest.TestCase):
-    def _run_ai_child(self, code):
+    def _run_ai_child(self, code, stdin=None):
         with tempfile.TemporaryDirectory(prefix="gaston-utf8-") as td:
             root = Path(td)
             output = root / "worker.log"
@@ -23,6 +23,7 @@ class RunProcessEncodingTests(unittest.TestCase):
                 result = eng.run_process(
                     [sys.executable, "-c", code],
                     output,
+                    stdin=stdin,
                     timeout=10,
                     cwd=root,
                     ai=True,
@@ -48,6 +49,20 @@ class RunProcessEncodingTests(unittest.TestCase):
         self.assertEqual(result.stderr, stderr + "\n")
         self.assertIn(stdout, log)
         self.assertIn("[stderr] " + stderr, log)
+
+    def test_ai_stdin_is_encoded_as_utf8(self):
+        prompt = "Prompt: \\u009d — café — 東京 — 😀"
+        code = (
+            "import sys; "
+            "payload = sys.stdin.read(); "
+            "sys.stdout.buffer.write(payload.encode('utf-8')); "
+            "sys.stdout.flush()"
+        )
+
+        result, _ = self._run_ai_child(code, stdin=prompt)
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, prompt)
 
     def test_invalid_utf8_byte_is_replaced_instead_of_killing_reader(self):
         invalid_bytes = b"bad:\x9d\n"
