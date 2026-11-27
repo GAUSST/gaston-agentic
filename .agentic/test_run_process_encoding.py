@@ -1,4 +1,5 @@
 """Regression tests for UTF-8 subprocess output and resilient stream readers."""
+import json
 import os
 from pathlib import Path
 import sys
@@ -63,6 +64,29 @@ class RunProcessEncodingTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, prompt)
+
+    def test_large_codex_json_stream_preserves_thread_and_completed_result(self):
+        thread_id = "12345678-1234-5678-9abc-123456789abc"
+        message = "\u009d — café — 東京 — 😀" * 8192
+        code = (
+            "import json, sys; "
+            f"events = [{{'type': 'thread.started', 'thread_id': {thread_id!r}}}, "
+            "{'type': 'item.completed', 'item': {'type': 'agent_message', "
+            "'text': ('\\u009d — café — 東京 — 😀' * 8192)}}, "
+            "{'type': 'turn.completed'}]; "
+            "sys.stderr.buffer.write(('diagnostic — ' * 8192 + '\\n').encode('utf-8')); "
+            "sys.stderr.flush(); "
+            "sys.stdout.buffer.write(('\\n'.join(json.dumps(e, ensure_ascii=False) "
+            "for e in events) + '\\n').encode('utf-8')); sys.stdout.flush()"
+        )
+        result, log = self._run_ai_child(code)
+        self.assertEqual(result.returncode, 0, result.stderr[:200])
+        self.assertEqual(eng.extract_codex_thread(result.stdout), thread_id)
+        events = [json.loads(line) for line in result.stdout.splitlines()]
+        self.assertEqual(events[1]["item"]["text"], message)
+        self.assertEqual(events[-1]["type"], "turn.completed")
+        self.assertEqual(result.stderr, "diagnostic — " * 8192 + "\n")
+        self.assertIn(message, log)
 
     def test_invalid_utf8_byte_is_replaced_instead_of_killing_reader(self):
         invalid_bytes = b"bad:\x9d\n"
