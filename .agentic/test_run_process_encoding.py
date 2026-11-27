@@ -36,8 +36,8 @@ class RunProcessEncodingTests(unittest.TestCase):
         stderr = "diagnostic: naïve façade — 😀"
         code = (
             "import sys; "
-            f"sys.stdout.buffer.write({stdout.encode('utf-8')!r} + b'\\n'); "
-            f"sys.stderr.buffer.write({stderr.encode('utf-8')!r} + b'\\n'); "
+            f"sys.stdout.buffer.write({(stdout + chr(10)).encode('utf-8')!r}); "
+            f"sys.stderr.buffer.write({(stderr + chr(10)).encode('utf-8')!r}); "
             "sys.stdout.flush(); sys.stderr.flush()"
         )
 
@@ -50,9 +50,9 @@ class RunProcessEncodingTests(unittest.TestCase):
         self.assertIn("[stderr] " + stderr, log)
 
     def test_invalid_utf8_byte_is_replaced_instead_of_killing_reader(self):
-        result, _ = self._run_ai_child(
-            r"import sys; sys.stdout.buffer.write(b'bad:\\x9d\\n'); sys.stdout.flush()"
-        )
+        invalid_bytes = b"bad:\\x9d\\n"
+        code = "import sys; sys.stdout.buffer.write(" + repr(invalid_bytes) + "); sys.stdout.flush()"
+        result, _ = self._run_ai_child(code)
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "bad:\ufffd\\n")
