@@ -394,7 +394,7 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
                 if error is not None:
                     reader_errors.append((kind, error))
                     diagnostic = f'STREAM READ ERROR ({kind}): {type(error).__name__}: {error}'
-                    log.write('\\n' + diagnostic + '\\n')
+                    log.write('\n' + diagnostic + '\n')
                     log.flush()
                     if not stopped:
                         task_runtime.stop_owned_process(p, isolated_group=isolated_group)
@@ -428,7 +428,7 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
                 f'{kind}: {type(error).__name__}: {error}' for kind, error in reader_errors
             )
             stderr_text = ''.join(stderr_lines)
-            stderr_text = (stderr_text + ('\\n' if stderr_text else '') + 'STREAM READ ERROR: ' + details)
+            stderr_text = (stderr_text + ('\n' if stderr_text else '') + 'STREAM READ ERROR: ' + details)
             returncode = p.returncode if p.returncode not in (None, 0) else 1
             print(f'  Stream reader failed; child stopped; exit {returncode}', flush=True)
             return subprocess.CompletedProcess(argv, returncode,
