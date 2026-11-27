@@ -11,8 +11,72 @@ import platform_compat as pc
 ROOT=Path(__file__).resolve().parent.parent
 sys.path.insert(0,str(ROOT))
 import gaston_cli
+import workspace_git
+import orchestration as orch
 
 class NativePlatformTests(unittest.TestCase):
+    def test_gaston_runtime_state_is_excluded_from_application_scope(self):
+        from project_layout import project_state
+
+        with tempfile.TemporaryDirectory(prefix='gaston scope exclusion ') as td:
+            root = Path(td).resolve()
+            def git(*args):
+                result = subprocess.run(['git', *args], cwd=root, capture_output=True,
+                                        text=True, timeout=20)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                return result.stdout.strip()
+
+            git('init', '-q')
+            git('config', 'user.name', 'Gaston scope test')
+            git('config', 'user.email', 'gaston-scope@example.invalid')
+            app = root / 'backend' / 'src' / 'Payment.java'
+            app.parent.mkdir(parents=True)
+            app.write_text('class Payment {}\n', encoding='utf-8')
+            runtime = root / '.gaston'
+            runtime.mkdir()
+            tracked_runtime = runtime / 'tracked-state.json'
+            tracked_runtime.write_text('{"state":"initial"}\n', encoding='utf-8')
+            git('add', '--all')
+            git('commit', '-m', 'fixture baseline')
+
+            baseline_fingerprint = workspace_git.fingerprint(root)
+            tracked_runtime.write_text('{"state":"updated"}\n', encoding='utf-8')
+            task_runtime = runtime / 'runs' / 'delegated-task'
+            task_runtime.mkdir(parents=True)
+            for index in range(12):
+                (task_runtime / f'internal-{index:02d}.json').write_text(
+                    '{"internal":true}\n', encoding='utf-8')
+
+            self.assertEqual(workspace_git.existing_changes(root), {})
+            self.assertEqual(workspace_git.changed_paths(root), [])
+            self.assertTrue(workspace_git.clean(root))
+            self.assertEqual(workspace_git.fingerprint(root), baseline_fingerprint)
+            diff, manifest = workspace_git.review_evidence(root)
+            self.assertNotIn('.gaston', diff)
+            self.assertNotIn('.gaston', manifest)
+
+            app.write_text('class Payment { int amount = 1; }\n', encoding='utf-8')
+            self.assertEqual(list(workspace_git.existing_changes(root)), ['backend/src/Payment.java'])
+            self.assertEqual(workspace_git.changed_paths(root), ['backend/src/Payment.java'])
+            self.assertFalse(workspace_git.clean(root))
+
+            folder = project_state(root) / 'runs' / 'scope-filter-task'
+            folder.mkdir(parents=True)
+            orch.put(folder / 'worker.json', {'attempt': 'a' * 32, 'started_at': 1})
+            internal = '.gaston/runs/delegated-task/internal-00.json'
+            after = {internal: 'internal-hash', 'backend/src/Payment.java': 'app-hash'}
+            observation = orch.scope_observation(
+                root, folder, {}, after, ['backend/src/Payment.java'], [internal])
+            self.assertEqual(observation['reported_outside_scope'], [])
+            self.assertEqual(observation['observed_outside_scope'], [])
+            self.assertEqual(observation['pending_paths'], [])
+
+            after['backend/src/Other.java'] = 'genuine-outside-change'
+            observation = orch.scope_observation(
+                root, folder, {}, after, ['backend/src/Payment.java'], [internal])
+            self.assertEqual(observation['observed_outside_scope'], ['backend/src/Other.java'])
+            self.assertEqual(observation['pending_paths'], ['backend/src/Other.java'])
+
     @unittest.skipUnless(os.name == 'nt', 'Windows venv redirector integration')
     def test_real_venv_worker_claims_reserved_launcher_pid(self):
         import json

@@ -580,21 +580,34 @@ def validate_task_scope(root,folder):
 
 
 def scope_observation(root,folder,before,after,scope,reported):
-    """A Git difference is evidence of change, not proof of which agent wrote it."""
-    pending=set(reported or []);observed=[];known=[]
-    if isinstance(before,dict) and isinstance(after,dict) and scope:
-        observed=sorted(name for name in set(before)|set(after) if before.get(name)!=after.get(name) and not within(name,scope))
+    """Compare application paths only; Gaston's own state is never app-scope work."""
+    from workspace_git import is_excluded_path
+    clean_reported={name for name in (reported or [])
+                    if isinstance(name,str) and not is_excluded_path(name)}
+    clean_before=({name:value for name,value in before.items()
+                   if isinstance(name,str) and not is_excluded_path(name)}
+                  if isinstance(before,dict) else before)
+    clean_after=({name:value for name,value in after.items()
+                  if isinstance(name,str) and not is_excluded_path(name)}
+                 if isinstance(after,dict) else after)
+    pending=set(clean_reported);observed=[];known=[]
+    if isinstance(clean_before,dict) and isinstance(clean_after,dict) and scope:
+        observed=sorted(name for name in set(clean_before)|set(clean_after)
+                        if clean_before.get(name)!=clean_after.get(name) and not within(name,scope))
         begun=read_record(folder/'worker.json').get('started_at',0)
         if not isinstance(begun,(int,float)):begun=float('inf')
         for run in (project_state(root)/'runs').glob('*'):
             if run.is_symlink() or not run.is_dir():continue
             for name,entry in read_record(run/'lead-edits.json').get('files',{}).items():
-                if name in observed and isinstance(entry,dict) and isinstance(entry.get('edited_at'),(int,float)) and entry['edited_at']>=begun and entry.get('after_sha256') and entry['after_sha256']==after.get(name):known.append(name)
+                if name in observed and isinstance(entry,dict) and isinstance(entry.get('edited_at'),(int,float)) and entry['edited_at']>=begun and entry.get('after_sha256') and entry['after_sha256']==clean_after.get(name):known.append(name)
         pending.update(set(observed)-set(known))
-    record={'attempt':read_record(folder/'worker.json').get('attempt'),'observed_outside_scope':observed,'matching_lead_ledger':sorted(set(known)),'reported_outside_scope':sorted(set(reported or [])),'pending_paths':sorted(pending),'git_observation_available':isinstance(after,dict),'recorded_at':time.time(),'note':'Unattributed observed changes alone are not proof of Builder misconduct.'}
+    record={'attempt':read_record(folder/'worker.json').get('attempt'),
+            'observed_outside_scope':observed,'matching_lead_ledger':sorted(set(known)),
+            'reported_outside_scope':sorted(clean_reported),'pending_paths':sorted(pending),
+            'git_observation_available':isinstance(clean_after,dict),'recorded_at':time.time(),
+            'note':'Unattributed application changes alone are not proof of Builder misconduct; private Gaston/runtime state is excluded.'}
     put(folder/'scope-observation.json',record)
     return record
-
 
 def reconcile_scope(root,tid,decisions):
     folder,task,state=_idle_task(root,tid);build=read_record(folder/'build.json')

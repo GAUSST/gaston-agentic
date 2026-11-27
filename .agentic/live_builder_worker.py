@@ -19,30 +19,36 @@ import task_runtime
 
 
 def changed_paths(root, rd, previous, reported=(), *, after=None):
-    """Keep the whole task scope across revisions; include observed Git edits."""
-    paths=set(previous.get('changed_files',[]) or [])
+    """Keep whole task scope across revisions; include application Git edits only."""
+    is_private=eng.workspace_git.is_excluded_path
+    paths={p for p in (previous.get('changed_files',[]) or [])
+           if isinstance(p,str) and not is_private(p)}
     for value in (reported or []):
+        if not isinstance(value,str) or is_private(value):
+            continue
         try:paths.add(orch.relative_path(root,value))
         except (ValueError,TypeError):continue
     try:
         before=eng.load_json(rd/'preexisting-changes.json').get('files',{})
         if after is None:after=eng.workspace_git.existing_changes(root,eng.load_config().get('project'))
-        observed={p for p in set(before)|set(after) if before.get(p)!=after.get(p)}
+        observed={p for p in set(before)|set(after)
+                  if not is_private(p) and before.get(p)!=after.get(p)}
         task=orch.read_record(rd/'task.json');scope=task.get('write_scope') or []
         # Other Lead work may proceed in parallel. Do not attribute disjoint
         # observed Git changes to this Builder; preserve scope diagnostics.
         if scope:
-            orch.put(rd/'concurrent-observed-paths.json',{'outside_builder_scope':sorted(p for p in observed if not orch.within(p,scope)), 'note':'Concurrent edits are not automatically attributable to Builder'})
+            orch.put(rd/'concurrent-observed-paths.json',{'outside_builder_scope':sorted(p for p in observed if not orch.within(p,scope)), 'note':'Concurrent application edits are not automatically attributable to Builder'})
             observed={p for p in observed if orch.within(p,scope)}
         paths.update(observed)
     except (Exception,SystemExit):pass
-    paths.update(orch.lead_paths(rd))
+    paths.update(p for p in orch.lead_paths(rd) if not is_private(p))
     normalized=set()
     for value in paths:
-        try:normalized.add(orch.relative_path(root,value))
+        try:
+            name=orch.relative_path(root,value)
+            if not is_private(name):normalized.add(name)
         except (ValueError,TypeError):continue
     return sorted(normalized)
-
 
 def interrupted(task_id, exc):
     rd=eng.run_dir(task_id)
@@ -147,7 +153,7 @@ def process(task_id):
             if value is None:os.environ.pop(key,None)
             else:os.environ[key]=value
     reported=built.get('changed_files',[]) or [];scope=task.get('write_scope') or []
-    outside=sorted(p for p in reported if isinstance(p,str) and scope and not orch.within(p,scope) and p not in orch.lead_paths(rd))
+    outside=sorted(p for p in reported if isinstance(p,str) and not eng.workspace_git.is_excluded_path(p) and scope and not orch.within(p,scope) and p not in orch.lead_paths(rd))
     try:after=eng.workspace_git.existing_changes(eng.ROOT,cfg.get('project'))
     except (OSError,ValueError):after=None
     built={**built,'revision_changed_files':reported,'changed_files':changed_paths(eng.ROOT,rd,previous,reported,after=after)}
