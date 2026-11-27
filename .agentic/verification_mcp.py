@@ -1263,7 +1263,7 @@ def _task_folder(task_id):
     if folder.is_symlink() or not (folder/'task.json').is_file():return None
     state=orch.read_record(folder/'state.json')
     worker=orch.read_record(folder/'worker.json')
-    if state.get('stage') not in orch.RUNNING and (not worker or (folder/'worker-finished.json').is_file()):
+    if state.get('stage') not in orch.RUNNING:
         orch.normalize_private_scope_state(ROOT,folder)
     return folder
 

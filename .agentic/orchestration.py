@@ -509,8 +509,12 @@ def normalize_private_scope_state(root,folder):
     if state.get('stage') in RUNNING:
         return False
     worker=read_record(folder/'worker.json')
-    if worker and not (folder/'worker-finished.json').is_file():
-        return False
+    if worker:
+        started=worker.get('started_at')
+        finished=read_record(folder/'worker-finished.json').get('finished_at')
+        if (not isinstance(started,(int,float)) or not isinstance(finished,(int,float))
+                or finished < started):
+            return False
     build=read_record(folder/'build.json')
     if not build:
         return False

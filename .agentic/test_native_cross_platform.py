@@ -137,6 +137,13 @@ class NativePlatformTests(unittest.TestCase):
                 self.assertEqual(build['status'],'blocked')
                 self.assertEqual(state['stage'],'needs_lead_decision')
                 self.assertEqual(build['scope_question'],'Scope reconciliation needed: '+real_outside)
+
+                stale=make_task('scope-filter-stale-worker',private)
+                orch.put(stale/'worker.json',{'attempt':'a'*32,'started_at':10})
+                orch.put(stale/'worker-finished.json',{'finished_at':2})
+                self.assertEqual(vm._task_folder('scope-filter-stale-worker'),stale)
+                self.assertEqual(orch.read_record(stale/'build.json')['scope_review_required'],private)
+                self.assertEqual(orch.read_record(stale/'state.json')['stage'],'needs_lead_decision')
             finally:
                 vm.ROOT=old_root
 
