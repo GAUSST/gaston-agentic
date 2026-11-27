@@ -1261,6 +1261,10 @@ def _task_folder(task_id):
     if not isinstance(task_id,str) or not re.fullmatch(r'[a-z0-9-]{8,120}',task_id):return None
     folder=project_state(ROOT)/'runs'/task_id
     if folder.is_symlink() or not (folder/'task.json').is_file():return None
+    state=orch.read_record(folder/'state.json')
+    worker=orch.read_record(folder/'worker.json')
+    if state.get('stage') not in task_runtime.RUNNING and (not worker or (folder/'worker-finished.json').is_file()):
+        orch.normalize_private_scope_state(ROOT,folder)
     return folder
 
 

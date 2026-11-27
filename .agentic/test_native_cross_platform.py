@@ -77,6 +77,69 @@ class NativePlatformTests(unittest.TestCase):
             self.assertEqual(observation['observed_outside_scope'], ['backend/src/Other.java'])
             self.assertEqual(observation['pending_paths'], ['backend/src/Other.java'])
 
+    def test_legacy_scope_blocker_auto_clears_only_reserved_gaston_paths(self):
+        import json
+        import verification_mcp as vm
+        from project_layout import project_state
+
+        with tempfile.TemporaryDirectory(prefix='gaston legacy scope repair ') as td:
+            root=Path(td).resolve()
+            tasks=project_state(root)/'runs'
+            tasks.mkdir(parents=True)
+            private=[f'.gaston/runs/old-task/internal-{i:02d}.json' for i in range(12)]
+            app='backend/src/Payment.java'
+
+            def make_task(task_id,pending):
+                folder=tasks/task_id
+                folder.mkdir()
+                question='Scope reconciliation needed: '+', '.join(pending)
+                orch.put(folder/'task.json',{'owner':'builder','write_scope':[app]})
+                orch.put(folder/'worker.json',{'attempt':'a'*32,'started_at':1})
+                orch.put(folder/'worker-finished.json',{'finished_at':2})
+                orch.put(folder/'state.json',{'stage':'needs_lead_decision','questions':[question]})
+                orch.put(folder/'build.json',{
+                    'status':'blocked','questions':[question],'changed_files':[app,*private],
+                    'revision_changed_files':[app,*private],
+                    'scope_review_required':pending,'out_of_scope_reported':pending,
+                    'scope_prior_status':'done','scope_prior_questions':[],
+                    'scope_question':question})
+                orch.put(folder/'scope-observation.json',{
+                    'observed_outside_scope':pending,'reported_outside_scope':pending,
+                    'pending_paths':pending,'matching_lead_ledger':[]})
+                return folder
+
+            old_root=vm.ROOT
+            vm.ROOT=root
+            try:
+                folder=make_task('scope-filter-legacy',private)
+                self.assertEqual(vm._task_folder('scope-filter-legacy'),folder)
+                build=orch.read_record(folder/'build.json')
+                state=orch.read_record(folder/'state.json')
+                self.assertEqual(build['scope_review_required'],[])
+                self.assertEqual(build['out_of_scope_reported'],[])
+                self.assertEqual(build['changed_files'],[app])
+                self.assertEqual(build['revision_changed_files'],[app])
+                self.assertEqual(build['status'],'done')
+                self.assertEqual(build['questions'],[])
+                self.assertEqual(state['stage'],'awaiting_lead_review')
+                self.assertFalse(state.get('lead_verified',False))
+                audit=orch.read_record(folder/'scope-normalization.json')
+                self.assertEqual(set(audit['events'][-1]['removed_paths']),set(private))
+
+                real_outside='backend/src/Other.java'
+                mixed=make_task('scope-filter-mixed',private+[real_outside])
+                self.assertEqual(vm._task_folder('scope-filter-mixed'),mixed)
+                build=orch.read_record(mixed/'build.json')
+                state=orch.read_record(mixed/'state.json')
+                self.assertEqual(build['scope_review_required'],[real_outside])
+                self.assertEqual(build['out_of_scope_reported'],[real_outside])
+                self.assertEqual(build['changed_files'],[app])
+                self.assertEqual(build['status'],'blocked')
+                self.assertEqual(state['stage'],'needs_lead_decision')
+                self.assertEqual(build['scope_question'],'Scope reconciliation needed: '+real_outside)
+            finally:
+                vm.ROOT=old_root
+
     @unittest.skipUnless(os.name == 'nt', 'Windows venv redirector integration')
     def test_real_venv_worker_claims_reserved_launcher_pid(self):
         import json
