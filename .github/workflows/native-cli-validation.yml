@@ -46,6 +46,10 @@ jobs:
         run: python -m unittest discover -s .agentic -p 'test_native_cross_platform.py' -v
         env:
           PYTHONPATH: .agentic
+      - name: Subprocess UTF-8 and reader failure regression
+        run: python -m unittest discover -s .agentic -p 'test_run_process_encoding.py' -v
+        env:
+          PYTHONPATH: .agentic
       - name: Engineering quality contract regression
         run: python -m unittest discover -s .agentic -p 'test_engineering_quality_contract.py' -v
         env:
