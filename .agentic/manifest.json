@@ -83,7 +83,7 @@
     ".agentic/verification_mcp.py": "6cbde748f9ae82df4c25d8f1213252e0fc9607a69b79d6343dba654dfcad3660",
     ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
     ".agentic/workspace_checks.py": "6d6e4e8cd8cca962ae1fb9143167e294d7c989bc775f432d0104fc8edb983bf5",
-    ".agentic/workspace_git.py": "47f8e7c3b89508b22425d33adc070252665f310436bee179bc1145d01cc8eb53",
+    ".agentic/workspace_git.py": "c0c96ebdaece3c1c16dc29b696a5f518288f370839636f7d1b19c41f44fcddfd",
     ".agents/skills/backend-assurance/SKILL.md": "82386ff20403de7adc0c8b099e80fa4bd9831f6a9bde60dc29a6a4c2417ac764",
     ".agents/skills/e2e-feature/SKILL.md": "7206232eb7be69e26e46649298b3978c26943ec6c69e26b2f95df280833d6ae6",
     ".agents/skills/fintech-invariants/SKILL.md": "c9eb6d6593fe23a6cd6548b463d8ed63d2b40234eaa21d15720080627825c39d",

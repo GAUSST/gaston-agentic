@@ -218,7 +218,7 @@ def existing_changes(root: Path, project: dict | None = None) -> dict[str, str]:
             else:
                 value = 'non-regular'
             baseline[path.relative_to(root).as_posix()] = value
-    return dict(sorted(baseline.items())
+    return dict(sorted(baseline.items()))
 
 def changed_existing_files(root: Path, baseline: dict[str, str]) -> list[str]:
     """Report application files changed by this task, ignoring private runtime paths."""
