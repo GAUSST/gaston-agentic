@@ -445,6 +445,38 @@ with c.reserve(root, 'flutter_analyze', '.', task_id='flutter-interrupted') as r
                 self.assertEqual(r['windows_cleanup'],'not_started')
             self.assertIsNone(coordination.active(root))
 
+    @unittest.skipUnless(os.name == 'nt', 'Native Windows Codex npm shim')
+    def test_windows_codex_catalog_and_direct_probe_through_real_cmd(self):
+        import json
+        import model_menu as mm
+        with tempfile.TemporaryDirectory(prefix='gaston codex setup ') as td:
+            root=Path(td).resolve()
+            bin_dir=root/'node bin'
+            bin_dir.mkdir()
+            shim=bin_dir/'codex.cmd'
+            fixture=bin_dir/'fixture.py'
+            fixture.write_text(
+                "import json,sys\n"
+                "args=sys.argv[1:]\n"
+                "if args==['debug','models']:\n"
+                "    print(json.dumps({'models':[{'slug':'gpt-6.2-sol','supported_reasoning_levels':['high']}, {'slug':'gpt-6.2-luna','supported_reasoning_levels':['low']}]}))\n"
+                "else:\n"
+                "    expected=['exec','--json','--ephemeral','--skip-git-repo-check','--ignore-user-config','--sandbox','read-only','-c',\"approval_policy='never'\",'--model','gpt-6.2-sol','-c',\"model_reasoning_effort='high'\",'Reply with only GASTON_MODEL_OK. Do not use tools or inspect files.']\n"
+                "    if args!=expected or sys.stdin.read()!='':\n"
+                "        print('Unexpected args: '+repr(args),file=sys.stderr);sys.exit(23)\n"
+                "    print(json.dumps({'type':'item.completed','item':{'type':'agent_message','text':'GASTON_MODEL_OK'}}))\n"
+                "    print(json.dumps({'type':'turn.completed'}))\n",encoding='utf-8')
+            shim.write_text('@echo off\n"%GASTON_TEST_PYTHON%" "%~dp0fixture.py" %*\nexit /b %ERRORLEVEL%\n',encoding='ascii')
+            with patch.dict(os.environ,{'PATH':str(bin_dir)+os.pathsep+os.environ.get('PATH',''),
+                                        'GASTON_TEST_PYTHON':sys._base_executable}):
+                mm.codex_catalog_details.cache_clear()
+                try:
+                    self.assertEqual(mm.codex_catalog_details()['gpt-6.2-sol'],('high',))
+                    ok, reason=mm.direct_codex_check('gpt-6.2-sol','high')
+                    self.assertTrue(ok,reason)
+                finally:
+                    mm.codex_catalog_details.cache_clear()
+
     def test_workspace_discovery_and_explicit_override(self):
         with tempfile.TemporaryDirectory() as td:
             root=Path(td).resolve();(root/'.agentic').mkdir();(root/'.agentic/launcher.py').write_text('# fixture')
