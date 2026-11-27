@@ -51,7 +51,7 @@ class RunProcessEncodingTests(unittest.TestCase):
         self.assertIn("[stderr] " + stderr, log)
 
     def test_ai_stdin_is_encoded_as_utf8(self):
-        prompt = "Prompt: \\u009d — café — 東京 — 😀"
+        prompt = "Prompt: \u009d — café — 東京 — 😀"
         code = (
             "import sys; "
             "payload = sys.stdin.read(); "
