@@ -332,7 +332,8 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
         argv, env, _ = prepare_subprocess(argv, env)
         p = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.PIPE if stdin is not None else subprocess.DEVNULL,
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             text=True, bufsize=1, env=env, **popen_kwargs())
+                             text=True, encoding='utf-8' if ai else None, errors='replace',
+                             bufsize=1, env=env, **popen_kwargs())
     except (FileNotFoundError, OSError) as exc:
         output.write_text(f'EXECUTION ERROR: {exc}\n', encoding='utf-8')
         return subprocess.CompletedProcess(argv, 127, stdout='', stderr=str(exc))
@@ -354,12 +355,15 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
         def reader(stream, kind):
             try:
                 for line in stream:
-                    events.put((kind,line))
+                    events.put((kind, line, None))
+            except Exception as exc:
+                events.put((kind, None, exc))
             finally:
-                events.put((kind,None))
+                events.put((kind, None, None))
         threading.Thread(target=reader, args=(p.stdout,'out'), daemon=True).start()
         threading.Thread(target=reader, args=(p.stderr,'err'), daemon=True).start()
         stdout_lines, stderr_lines = [], []
+        reader_errors = []
         last_progress = started
         ended = set()
         tty = bool(getattr(sys.stdout, 'isatty', lambda: False)())
@@ -384,10 +388,18 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
                     print(f'  Timed out after {timeout}s', flush=True)
                     return subprocess.CompletedProcess(argv, 124, stdout=''.join(stdout_lines), stderr='Timed out')
                 try:
-                    kind,line = events.get(timeout=0.25 if tty else 1)
+                    kind, line, error = events.get(timeout=0.25 if tty else 1)
                 except queue.Empty:
-                    kind,line = None,''
-                if line is None and kind:
+                    kind, line, error = None, '', None
+                if error is not None:
+                    reader_errors.append((kind, error))
+                    diagnostic = f'STREAM READ ERROR ({kind}): {type(error).__name__}: {error}'
+                    log.write('\n' + diagnostic + '\n')
+                    log.flush()
+                    if not stopped:
+                        task_runtime.stop_owned_process(p, isolated_group=isolated_group)
+                        stopped = True
+                elif line is None and kind:
                     ended.add(kind)
                 elif line:
                     if kind == 'out': stdout_lines.append(line)
@@ -411,6 +423,16 @@ def run_process(argv: list[str], output: Path, *, stdin: str | None = None,
         clear_spinner()
         p.wait(timeout=max(.01, timeout-(time.monotonic()-started)))
         completed = True
+        if reader_errors:
+            details = '; '.join(
+                f'{kind}: {type(error).__name__}: {error}' for kind, error in reader_errors
+            )
+            stderr_text = ''.join(stderr_lines)
+            stderr_text = (stderr_text + ('\n' if stderr_text else '') + 'STREAM READ ERROR: ' + details)
+            returncode = p.returncode if p.returncode not in (None, 0) else 1
+            print(f'  Stream reader failed; child stopped; exit {returncode}', flush=True)
+            return subprocess.CompletedProcess(argv, returncode,
+                                                stdout=''.join(stdout_lines), stderr=stderr_text)
         print(f'  Finished in {time.monotonic()-started:.1f}s; exit {p.returncode}', flush=True)
         return subprocess.CompletedProcess(argv, p.returncode, stdout=''.join(stdout_lines), stderr=''.join(stderr_lines))
     except subprocess.TimeoutExpired:
