@@ -45,6 +45,7 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
         self.assertFalse(result['network_allowed'])
         self.assertEqual(result['network_policy'],'offline')
         self.assertEqual(result['network_usage'],'not_used_by_build_tool')
+        self.assertFalse(result['network_attempted'])
         self.assertNotIn('HTTP_PROXY',kwargs['env'])
         self.assertNotIn('HTTPS_PROXY',kwargs['env'])
         self.assertNotIn('NO_PROXY',kwargs['env'])
@@ -55,6 +56,9 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
         self.assertEqual(backend_runner.dependency_network_usage('Could not transfer artifact: status code: 401','',True),'request_observed')
         self.assertEqual(backend_runner.dependency_network_usage('BUILD SUCCESS','',True),'unknown')
         self.assertEqual(backend_runner.dependency_network_usage('BUILD SUCCESS','',False),'not_used_by_build_tool')
+        self.assertIsNone(backend_runner.dependency_network_attempted('unknown'))
+        self.assertTrue(backend_runner.dependency_network_attempted('request_observed'))
+        self.assertFalse(backend_runner.dependency_network_attempted('not_used_by_build_tool'))
 
 
 class ExplicitApprovalTests(unittest.TestCase):
@@ -127,6 +131,7 @@ class ManagedApiOfflinePolicyTests(unittest.TestCase):
             self.assertFalse(result['network_allowed'])
             self.assertEqual(result['network_policy'],'offline')
             self.assertEqual(result['network_usage'],'not_used_by_build_tool')
+            self.assertFalse(result['network_attempted'])
             self.assertIn('not OS-network-isolated',result['network_scope'])
             self.assertTrue(result['log_path'])
             log=root/result['log_path']
