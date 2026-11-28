@@ -150,7 +150,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                 else:
                     checked=subprocess.run([sys.executable,str(Path(__file__).with_name('api_checks.py')),str(suite)],cwd=project,env=env,capture_output=True,text=True,timeout=suite_timeout)
                     captured_stdout=checked.stdout or '';captured_stderr=checked.stderr or ''
-                    result.update(status='pass' if checked.returncode==0 else 'blocked' if checked.returncode==2 else 'fail',managed_application=True,readiness_http_status=ready_status,exit_code=checked.returncode,summary=captured_stdout[-8000:],suite=suite.relative_to(project).as_posix())
+                    result.update(status='pass' if checked.returncode==0 else 'blocked' if checked.returncode==2 else 'fail',managed_application=True,readiness_http_status=ready_status,exit_code=checked.returncode,suite=suite.relative_to(project).as_posix())
                     if checked.returncode==0 and driver is not None:
                         # Allows real nonce signing/TOTP/other stateful protocol tests
                         # without inventing a generic authentication protocol. Only
