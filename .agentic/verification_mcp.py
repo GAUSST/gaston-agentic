@@ -354,16 +354,19 @@ def run_backend_tests(project=None, goal='test', test_filter=None, offline=None,
     if goal not in ('test','verify'):return response('blocked',reason='Lead test verification requires test or verify, not compile-only')
     if allow_network and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
         return response('blocked',reason='Online dependency access requires explicit developer approval for this run',
-                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False)
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False,
+                        network_scope='Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')
     import backend_runner
     options=backend_runner.discover(ROOT)
     if not options:
         return response('blocked',reason='No Maven/Gradle project detected in workspace',
-                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool')
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False,
+                        network_scope='Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')
     if project is None:
         if len(options)!=1:
             return response('blocked',reason='Multiple Java projects; provide exact project path',projects=options,
-                            network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool')
+                            network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False,
+                            network_scope='Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')
         project=options[0]['path']
     network_allowed=bool(allow_network and offline is not True)
     effective_offline=bool(offline) if offline is not None else not network_allowed
@@ -371,9 +374,10 @@ def run_backend_tests(project=None, goal='test', test_filter=None, offline=None,
     # Maven/Gradle are always offline unless this call carries explicit approval.
     result=backend_runner.run(ROOT,project,goal=goal,test_filter=test_filter,
                                offline=effective_offline,allow_network=network_allowed,timeout=600)
+    usage=result.get('network_usage','unknown' if network_allowed else 'not_used_by_build_tool')
     return {**result,'network_allowed':network_allowed,
             'network_policy':'approved_online' if network_allowed else 'offline',
-            'network_usage':result.get('network_usage','unknown' if network_allowed else 'not_used_by_build_tool'),
+            'network_usage':usage,'network_attempted':result.get('network_attempted',usage in ('request_observed','download_observed')),
             'network_scope':result.get('network_scope','Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')}
 
 
@@ -1398,7 +1402,8 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
         return response('blocked',reason='Network approval applies only to backend dependency resolution')
     if allow_network and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
         return response('blocked',reason='Online dependency access requires explicit developer approval for this exact check',
-                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False)
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False,
+                        network_scope='Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')
     state=__import__('task_runtime').read_record(folder/'state.json')
     if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required'):
         return response('blocked',blocker='workspace_not_idle',requires_idle_workspace=True,active_builder_tasks=orch.active_builders(ROOT),
@@ -1465,6 +1470,7 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
                         'network_allowed':prior_parameters.get('network_allowed',prior_evidence.get('network_allowed')),
                         'network_policy':prior_parameters.get('network_policy',prior_evidence.get('network_policy','unknown')),
                         'network_usage':prior_parameters.get('network_usage',prior_evidence.get('network_usage','unknown')),
+                        'network_attempted':prior_parameters.get('network_attempted',prior_evidence.get('network_attempted')),
                         'network_scope':prior_parameters.get('network_scope',prior_evidence.get('network_scope','unknown')),
                     }
                     if prior_parameters.get('network_approval_quote'):
@@ -1506,6 +1512,7 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
         params.update(network_allowed=bool(allow_network),
                       network_policy='approved_online' if allow_network else 'offline',
                       network_usage=result.get('network_usage','unknown'),
+                      network_attempted=result.get('network_attempted'),
                       network_scope=result.get('network_scope','Maven/Gradle dependency resolution only; project test code is not OS-network-isolated'))
         if allow_network:params['network_approval_quote']=approval_quote
     if env_digest:params['environment_fingerprint']=env_digest
