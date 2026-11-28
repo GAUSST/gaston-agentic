@@ -364,8 +364,8 @@ def run_backend_tests(project=None, goal='test', test_filter=None, offline=None,
     # Maven/Gradle are always offline unless this call carries explicit approval.
     result=backend_runner.run(ROOT,project,goal=goal,test_filter=test_filter,
                                offline=effective_offline,allow_network=network_allowed,timeout=600)
-    return {**result,'network_allowed':bool(result.get('network_allowed',False)),
-            'network_policy':result.get('network_policy','offline'),
+    return {**result,'network_allowed':network_allowed,
+            'network_policy':'approved_online' if network_allowed else 'offline',
             'network_usage':result.get('network_usage','unknown' if network_allowed else 'not_used_by_build_tool'),
             'network_scope':result.get('network_scope','Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')}
 
@@ -1486,8 +1486,8 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
         result=run_project_mobile_tests(project, relative_path)
     params={'project':project or result.get('project'),'test_filter':test_filter,'relative_path':relative_path}
     if kind in ('backend','api'):
-        params.update(network_allowed=bool(result.get('network_allowed',False)),
-                      network_policy=result.get('network_policy','offline'),
+        params.update(network_allowed=bool(allow_network),
+                      network_policy='approved_online' if allow_network else 'offline',
                       network_usage=result.get('network_usage','unknown'),
                       network_scope=result.get('network_scope','Maven/Gradle dependency resolution only; project test code is not OS-network-isolated'))
         if allow_network:params['network_approval_quote']=approval_quote
