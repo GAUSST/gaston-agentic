@@ -52,6 +52,7 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
     def test_dependency_activity_is_reported_separately_from_permission(self):
         self.assertEqual(backend_runner.dependency_network_usage('Downloaded from central','',True),'download_observed')
         self.assertEqual(backend_runner.dependency_network_usage('Downloading from central','',True),'request_observed')
+        self.assertEqual(backend_runner.dependency_network_usage('Could not transfer artifact: status code: 401','',True),'request_observed')
         self.assertEqual(backend_runner.dependency_network_usage('BUILD SUCCESS','',True),'unknown')
         self.assertEqual(backend_runner.dependency_network_usage('BUILD SUCCESS','',False),'not_used_by_build_tool')
 
@@ -126,6 +127,7 @@ class ManagedApiOfflinePolicyTests(unittest.TestCase):
             self.assertFalse(result['network_allowed'])
             self.assertEqual(result['network_policy'],'offline')
             self.assertEqual(result['network_usage'],'not_used_by_build_tool')
+            self.assertIn('not OS-network-isolated',result['network_scope'])
             self.assertTrue(result['log_path'])
             log=root/result['log_path']
             self.assertTrue(log.is_file())
