@@ -247,7 +247,8 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
                     'reason':'Pinned Maven Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'runner':'mvnw','project':rel,'build_system':build,'goal':goal,
                     'cache_path':str(cache.relative_to(root)),'network_allowed':False,
-                    'network_policy':'offline','network_usage':'not_used_by_build_tool'}
+                    'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
+                    'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated'}
         repo=cache/'maven-repository'
         try:repo.mkdir(parents=True,exist_ok=True)
         except OSError as exc:
@@ -268,7 +269,8 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
                     'reason':'Pinned Gradle Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'runner':'gradlew','project':rel,'build_system':build,'goal':goal,
                     'cache_path':str(cache.relative_to(root)), 'network_allowed':False,
-                    'network_policy':'offline','network_usage':'not_used_by_build_tool'}
+                    'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
+                    'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated'}
         args=[binary,'--no-daemon','--console=plain']
         if offline or not allow_network:args+=['--offline']
         args += ['testClasses' if goal=='test-compile' else 'test' if goal=='test' else 'check']
