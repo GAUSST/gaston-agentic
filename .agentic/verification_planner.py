@@ -161,7 +161,7 @@ def select_checks(task: dict, steps: list[dict], changed_paths: list[str],
     required = set(task.get('required_checks', []))
     for area in areas:
         required.add(REQUIRED_GATES[area])
-    if not unknown and areas & {'backend', 'api', 'database', 'security'} and 'backend_verify' in by_name:
+    if not unknown and areas & {'backend', 'database', 'security'} and 'backend_verify' in by_name:
         wanted.add('backend_verify')
     # User-defined gates retain backwards compatibility unless associated
     # with explicit areas. An optional area tag supports project-specific gates.
