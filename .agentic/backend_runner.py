@@ -153,8 +153,9 @@ def _wrapper_distribution_name(properties: Path) -> str | None:
 
 def _wrapper_distribution_cached(properties: Path, user_home: Path, executable: str) -> bool:
     """Avoid an implicit wrapper download during an offline-only compile."""
+    if not properties.is_file():return False
     name=_wrapper_distribution_name(properties)
-    if not name:return True  # custom wrapper or nonstandard URL: let its own runner report
+    if not name:return False  # Unknown/custom distribution cannot be proven cached.
     distributions=user_home/'wrapper'/'dists'
     if not distributions.is_dir():return False
     binary='mvn' if executable=='maven' else 'gradle'
@@ -243,7 +244,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
         if not binary:return {'status':'blocked','reason_code':'RUNNER_UNAVAILABLE','reason':'Executable Maven wrapper or system Maven not found'}
         if (offline or not allow_network) and wrapper_ready and not _wrapper_distribution_cached(directory/'.mvn/wrapper/maven-wrapper.properties',Path(env['MAVEN_USER_HOME']),'maven'):
             return {'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
-                    'reason':'Pinned Maven Wrapper distribution is not cached; online fallback requires explicit approval',
+                    'reason':'Pinned Maven Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'runner':'mvnw','project':rel,'build_system':build,'goal':goal,
                     'cache_path':str(cache.relative_to(root)),'network_allowed':False,
                     'network_policy':'offline','network_usage':'not_used_by_build_tool'}
@@ -264,7 +265,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
         wrapper_ready=wrapper.is_file()
         if (offline or not allow_network) and wrapper_ready and not _wrapper_distribution_cached(directory/'.gradle/wrapper/gradle-wrapper.properties',Path(env['GRADLE_USER_HOME']),'gradle'):
             return {'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
-                    'reason':'Pinned Gradle Wrapper distribution is not cached; online fallback requires explicit approval',
+                    'reason':'Pinned Gradle Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'runner':'gradlew','project':rel,'build_system':build,'goal':goal,
                     'cache_path':str(cache.relative_to(root)), 'network_allowed':False,
                     'network_policy':'offline','network_usage':'not_used_by_build_tool'}
