@@ -46,9 +46,7 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
 
     def test_unconfigured_wrapper_is_blocked_offline(self):
         wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
-        with patch.object(backend_runner,'installed_jdks',return_value=[]), \\
-             patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), \\
-             patch.object(backend_runner.subprocess,'run') as run:
+        with patch.object(backend_runner,'installed_jdks',return_value=[]), patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), patch.object(backend_runner.subprocess,'run') as run:
             result=backend_runner.run(self.root,'backend',goal='test-compile',offline=True,allow_network=False)
         self.assertEqual(result['status'],'blocked')
         self.assertEqual(result['reason_code'],'DEPENDENCY_RESOLUTION_UNAVAILABLE')
