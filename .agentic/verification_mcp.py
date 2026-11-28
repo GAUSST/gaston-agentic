@@ -400,11 +400,13 @@ def prepare_builder_dependencies(project=None, allow_network=False, explicit_dev
         return response('blocked',reason='Project is not a discovered Java build root',projects=projects)
     if allow_network and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
         return response('blocked',reason='Online dependency fetching requires explicit, project-specific developer approval; offline preflight is available without it',
-                        project=project,network_attempted=False)
+                        project=project,network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',
+                        network_attempted=False,network_scope='Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')
     result=builder_compile.check(ROOT,project,allow_network=bool(allow_network),approval_quote=approval_quote)
     return {'status':result.get('status','blocked'),'project':project,'goal':'test-compile',
             'cache_scope':'.agentic/local/backend-dependencies',
             'network_allowed':result.get('network_allowed',False),
+            'network_policy':'approved_online' if result.get('network_allowed') else 'offline',
             'network_usage':result.get('network_usage','not_used_by_build_tool'),
             'network_attempted':result.get('network_attempted'),
             'network_scope':result.get('network_scope','Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated'),
