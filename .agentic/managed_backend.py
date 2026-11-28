@@ -126,6 +126,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
             'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool',
             'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     proc=None
+    captured_stdout='';captured_stderr=''
     # Private fixture logs may include test OTPs. Never send raw logs through MCP.
     with tempfile.TemporaryDirectory(prefix='gaston-e2e-',dir=local) as td:
         try:
@@ -146,13 +147,16 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                     result.update(status=browser['status'],managed_application=True,readiness_http_status=ready_status,browser=browser)
                 else:
                     checked=subprocess.run([sys.executable,str(Path(__file__).with_name('api_checks.py')),str(suite)],cwd=project,env=env,capture_output=True,text=True,timeout=suite_timeout)
-                    result.update(status='pass' if checked.returncode==0 else 'blocked' if checked.returncode==2 else 'fail',managed_application=True,readiness_http_status=ready_status,exit_code=checked.returncode,summary=checked.stdout[-8000:],suite=suite.relative_to(project).as_posix())
+                    captured_stdout=checked.stdout or '';captured_stderr=checked.stderr or ''
+                    result.update(status='pass' if checked.returncode==0 else 'blocked' if checked.returncode==2 else 'fail',managed_application=True,readiness_http_status=ready_status,exit_code=checked.returncode,summary=captured_stdout[-8000:],suite=suite.relative_to(project).as_posix())
                     if checked.returncode==0 and driver is not None:
                         # Allows real nonce signing/TOTP/other stateful protocol tests
                         # without inventing a generic authentication protocol. Only
                         # project-owned test code, reviewed by the Lead, is executed.
                         # The driver emits exit status and must never print secrets.
                         extra=subprocess.run([sys.executable,str(driver)],cwd=project,env=env,capture_output=True,text=True,timeout=driver_budget)
+                        captured_stdout+='\nSCENARIO STDOUT\n'+(extra.stdout or '')
+                        captured_stderr+='\nSCENARIO STDERR\n'+(extra.stderr or '')
                         result['scenario_driver_timeout_seconds']=driver_budget
                         result.update(scenario_driver=driver.relative_to(project).as_posix(),scenario_driver_exit_code=extra.returncode)
                         if extra.returncode!=0:
@@ -164,8 +168,11 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
             try:
                 startup_text=(Path(td)/'startup.log').read_text(encoding='utf8',errors='replace')
                 result['network_usage']=backend_runner.dependency_network_usage(startup_text,'',network_allowed)
-            except OSError:
-                result['network_usage']='unknown'
+                from platform_compat import persist_verification_log
+                log_path=persist_verification_log(local/'verification-logs',startup_text,captured_stdout+'\\n'+captured_stderr)
+                if log_path:result['log_path']=Path(log_path).resolve().relative_to(root).as_posix()
+            except (OSError,ValueError):
+                if network_allowed:result['network_usage']='unknown'
             if proc:
                 try:_stop(proc);result['process_cleanup']='complete'
                 except (OSError,subprocess.TimeoutExpired):result.update(status='blocked',process_cleanup='failed',reason='Could not confirm owned application termination')
