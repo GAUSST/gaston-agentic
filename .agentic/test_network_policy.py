@@ -96,9 +96,9 @@ class ManagedApiOfflinePolicyTests(unittest.TestCase):
             'readiness_path':'/health','readiness_status':200,
         }))
         java=project/'src/test/java/com/example/TestApp.java'
-        java.parent.mkdir(parents=True);java.write_text('class TestApp {}')
+        java.parent.mkdir(parents=True);java.write_text('package com.example; public class TestApp { public static void main(String[] args) {} }')
         suite=project/'src/test/e2e/suite.json'
-        suite.parent.mkdir(parents=True);suite.write_text(json.dumps({'cases':[{'expect_json':{}}]}))
+        suite.parent.mkdir(parents=True);suite.write_text(json.dumps({'cases':[{'name':'health','path':'/health','expected_status':200,'expect_json':{'status':'UP'}}]}))
         return project
 
     def test_managed_api_launches_maven_offline_and_persists_log(self):
