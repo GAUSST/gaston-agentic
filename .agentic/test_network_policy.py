@@ -32,7 +32,7 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
         self.subproc.start();self.addCleanup(self.subproc.stop)
         self.run=patch.object(backend_runner.subprocess,'run',side_effect=run)
         self.run.start();self.addCleanup(self.run.stop)
-        self.maven=patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn')
+        self.maven=patch.object(backend_runner.shutil,'which',side_effect=lambda name:'/usr/bin/mvn' if name=='mvn' else None)
         self.maven.start();self.addCleanup(self.maven.stop)
         self.run_env=patch.dict(os.environ,{'HTTP_PROXY':'http://proxy.invalid:8080','HTTPS_PROXY':'http://proxy.invalid:8080','NO_PROXY':'*'})
         self.run_env.start();self.addCleanup(self.run_env.stop)
