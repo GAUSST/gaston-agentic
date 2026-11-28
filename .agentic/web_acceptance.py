@@ -173,6 +173,10 @@ def execute_owned(argv, *, cwd, env, timeout, log_dir=None):
         result.update(exit_code=proc.returncode,stdout=out[-9000:],stderr=err[-9000:])
         if log_path:result['log_path']=log_path
     except (OSError,subprocess.TimeoutExpired) as exc:
+        if isinstance(exc,subprocess.TimeoutExpired):
+            from platform_compat import persist_verification_log
+            log_path=persist_verification_log(log_dir,exc.stdout or '',exc.stderr or '')
+            if log_path:result['log_path']=log_path
         result['reason']=type(exc).__name__
     finally:
         if proc:
