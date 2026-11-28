@@ -1976,26 +1976,25 @@ CALLS={
 
 def compact_tool_response(name,out,args):
     if not isinstance(out,dict):return out
-    if name in ('run_task_acceptance_check','verify_delegated_backend_task','run_backend_tests'):
+    compact_tools={
+        'run_task_acceptance_check','verify_delegated_backend_task','run_backend_tests',
+        'run_project_web_tests','inspect_web_application','run_maestro_tests',
+        'run_http_smoke','run_local_api_checks','run_web_smoke',
+    }
+    if name in compact_tools:
         import evidence_efficiency
-        output=dict(out)
-        if isinstance(output.get('evidence'),dict):
-            output['evidence']=evidence_efficiency.compact_outcome(output['evidence'],failure=out.get('status') in ('blocked','fail'))
-        if isinstance(output.get('backend_verification'),dict):
-            output['backend_verification']=evidence_efficiency.compact_outcome(output['backend_verification'],failure=out.get('status') in ('blocked','fail'))
-        out=output
-    if out.get('status') in ('blocked','fail'):return out
+        out=evidence_efficiency.compact_outcome(out,failure=out.get('status') in ('blocked','fail'))
     def compact(plan, *, detail_ids=()):
         if not isinstance(plan,dict) or not isinstance(plan.get('items'),list):return plan
         items=[]
         for item in plan['items']:
-            row={k:item[k] for k in ('id','owner','kind','status','ready','dependency_ready','executable','execution_blockers','requires_idle_workspace','idle_reason','task_id','depends_on') if k in item}
+            row={k:item[k] for k in ('id','owner','kind','status','ready','dependency_ready','executable','execution_blockers','requires_idle_workspace','idle_reason','task_id','depends_on','superseded_by','superseded_reason') if k in item}
             if item.get('ready') or item.get('id') in detail_ids:
                 row.update({k:item[k] for k in ('goal','paths','acceptance_criteria') if k in item})
             items.append(row)
         return {**plan,'items':items,'detail_available':'work_plan_status(detailed=true); full evidence retained on disk'}
     result=dict(out)
-    if name in ('record_lead_inspection','extend_work_plan','defer_work_item','work_plan_status') and not args.get('detailed'):
+    if name in ('record_lead_inspection','extend_work_plan','defer_work_item','supersede_work_item','work_plan_status') and not args.get('detailed'):
         result=compact(result,detail_ids=[args.get('item_id')])
     if isinstance(result.get('work_plan'),dict):result['work_plan']=compact(result['work_plan'])
     if name in ('task_code_review','record_code_review') and isinstance(result.get('review'),dict):
@@ -2007,7 +2006,6 @@ def compact_tool_response(name,out,args):
             review.pop('missing_files',None);review['all_required_files_missing_review']=True
         result['review']=review
     return result
-
 
 def handle(request, *, cancel_event=None, progress=None):
     method=request.get('method')
