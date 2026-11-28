@@ -215,7 +215,7 @@ class EvidenceEfficiencyTests(unittest.TestCase):
     def test_runner_retains_complete_logs_securely(self):
         output='Tests run: 2, Failures: 0, Errors: 0, Skipped: 0\n'+'X'*20000
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
-             patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), \
+             patch.object(backend_runner.shutil,'which',side_effect=lambda name:'/usr/bin/mvn' if name=='mvn' else None), \
              patch.object(backend_runner.subprocess,'run',return_value=subprocess.CompletedProcess(['mvn'],0,output,'')):
             result=backend_runner.run(self.root,'backend',goal='test',offline=False,allow_network=False)
         self.assertEqual(result['status'],'pass')
