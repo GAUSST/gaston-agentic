@@ -175,7 +175,7 @@ def dependency_network_usage(stdout: str, stderr: str, network_allowed: bool) ->
     output = (str(stdout or '') + '\n' + str(stderr or ''))
     if re.search(r'\bDownloaded from\b|\bDownloaded\b', output, re.I):
         return 'download_observed'
-    if re.search(r'\bDownloading from\b|Could not transfer artifact|HTTP response code:\s*\d{3}|401 Unauthorized|Unknown host|Connection timed out', output, re.I):
+    if re.search(r'\bDownloading from\b|\bDownloading\s+https?://|Could not transfer artifact|Could not (?:GET|HEAD|POST|PUT)|HTTP response code:\s*\d{3}|status code:\s*\d{3}|401 Unauthorized|Unknown host|Connection timed out', output, re.I):
         return 'request_observed'
     return 'unknown' if network_allowed else 'not_used_by_build_tool'
 
