@@ -372,6 +372,7 @@ def persist_verification_log(log_dir, stdout, stderr):
         directory=Path(log_dir)
         directory.mkdir(parents=True,exist_ok=True,mode=0o700)
         if directory.is_symlink():return None
+        if os.name!='nt':os.chmod(directory,0o700)
         target=directory/('verify-'+secrets.token_hex(12)+'.log')
         flags=os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0)
         fd=os.open(target,flags,0o600)
