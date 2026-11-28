@@ -46,7 +46,7 @@
     ".agentic/test_builder_dependency_preparation.py": "5445e33dc40b107f20ab6017c92abbbc1d162826418f17951cce02316af79a56",
     ".agentic/test_cli_bootstrap.py": "962cbb29cdd60361cce26e6d678ff1cbb1168c95b61db02b9c8eebe1eea4567a",
     ".agentic/test_database_diagnostics.py": "fca77822adbec4a2958d9bfb791c32500f3347aff54a2d938e96c1b8d0af3e7c",
-    ".agentic/test_evidence_efficiency.py": "52202bc60969d6a34c1e6839d9fac92e07686cb7d5533f944995b272b1ed91bc",
+    ".agentic/test_evidence_efficiency.py": "a292fab9d4252ed0d9d2cd06a14be36b4f0fe93f2a72978e1c19f223ee1be94e",
     ".agentic/test_evolution.py": "d62cf2c76c9ca36693c035bccd24e9f984c6829f94bfc1e0fa170eeb62b0069e",
     ".agentic/test_evolved_302173c39a419946.py": "ec207702834443e2c2a316e9f911ab45a201ef2f1df1366b6ea779544fa84174",
     ".agentic/test_evolved_dc8eb5c70e65fc15.py": "db017f3815f83bc2af1b9873feaf1efe2b3ce8d50f113366e52a793c7f565f90",
@@ -133,7 +133,7 @@
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b",
     ".agentic/test_run_process_encoding.py": "137cb757c24bdf7970f2ad8c1b2e5556684a8d3865d64b7a8aadd1607d4034b2",
     ".agentic/test_verification_planner.py": "539e53c121f64c22268a537225e6c8146e18ecdbd7a6fc87a0bdbca0d8d3a9ca",
-    ".agentic/test_network_policy.py": "67a74b9be71ad5d39edd5f0ff128c3342668e7abdb94899b86238c0335d6dcc0",
+    ".agentic/test_network_policy.py": "9e145f6f73417731e70b3e05cff0c5d90056693fcd94b60677b033090a9376a0",
     ".agentic/test_documentation_review.py": "bdc92a427de521f87896353afb23aa1d6761ac2f30568b7b9a962dc124423e44",
     ".agentic/test_work_plan_supersession.py": "97170b367f44c0eb53b11f822df61d537e8be42a7559a6c94bc42c2bef8c7737",
     ".agentic/test_verification_logs.py": "df5516e87109aab63f6b694c160ffcf4304c6e7cbed64292f449196499dceb88"
