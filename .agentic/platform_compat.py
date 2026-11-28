@@ -363,7 +363,37 @@ class _WindowsVerificationJob:
             self.handle = None
 
 
-def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=9000, cancel_event=None, job_name=None):
+def persist_verification_log(log_dir, stdout, stderr):
+    """Persist complete private subprocess output with restrictive local permissions."""
+    import secrets
+    import shutil
+    if log_dir is None:return None
+    try:
+        directory=Path(log_dir)
+        directory.mkdir(parents=True,exist_ok=True,mode=0o700)
+        if directory.is_symlink():return None
+        target=directory/('verify-'+secrets.token_hex(12)+'.log')
+        flags=os.O_CREAT|os.O_EXCL|os.O_WRONLY|getattr(os,'O_NOFOLLOW',0)
+        fd=os.open(target,flags,0o600)
+        with os.fdopen(fd,'wb') as dest:
+            def write_part(value):
+                if hasattr(value,'seek') and hasattr(value,'read'):
+                    value.seek(0)
+                    shutil.copyfileobj(value,dest)
+                elif isinstance(value,bytes):
+                    dest.write(value)
+                else:
+                    dest.write(str(value or '').encode('utf8',errors='replace'))
+            dest.write(b'STDOUT\n')
+            write_part(stdout)
+            dest.write(b'\nSTDERR\n')
+            write_part(stderr)
+        return str(target)
+    except (OSError,ValueError,TypeError):
+        return None
+
+
+def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=9000, cancel_event=None, job_name=None, log_dir=None):
     """Bound execution and cleanup without waiting for inherited output-pipe EOF.
 
     Disk-backed private output handles survive a descendant retaining stdout
@@ -453,7 +483,9 @@ def run_verification_process(argv, *, cwd, env=None, timeout=60, output_limit=90
             end = stream.seek(0, os.SEEK_END)
             stream.seek(max(0, end - output_limit * 4))
             return stream.read(output_limit * 4).decode(encoding, errors='replace')[-output_limit:]
+        log_path=persist_verification_log(log_dir,out,err)
         result.update(stdout=tail(out), stderr=tail(err), elapsed_seconds=round(time.monotonic()-started, 3))
+        if log_path:result['log_path']=log_path
         if result.get('detail'):
             result['stderr'] = (result['stderr'] + '\n' + result['detail'])[-output_limit:]
         return result
