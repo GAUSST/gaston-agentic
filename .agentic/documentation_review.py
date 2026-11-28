@@ -49,9 +49,10 @@ def _document_digest(folder, name, *, allow_deleted=False):
 
 
 def report(folder):
-    required=sorted(set(_required(folder))|set(task_runtime.read_record(folder/'lead-documentation-review.json').get('documents',{})))
     previous=task_runtime.read_record(folder/'lead-documentation-review.json')
     prior_notes=previous.get('documents',{})
+    if not isinstance(prior_notes,dict):prior_notes={}
+    required=sorted(set(_required(folder))|set(prior_notes))
     if not isinstance(prior_notes,dict):prior_notes={}
     prior_digests=previous.get('document_digests',{})
     if not isinstance(prior_digests,dict):prior_digests={}
