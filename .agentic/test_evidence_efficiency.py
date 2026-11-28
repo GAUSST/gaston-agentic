@@ -213,10 +213,9 @@ class EvidenceEfficiencyTests(unittest.TestCase):
         self.assertEqual(expanded['status'],'ready')
 
     def test_runner_retains_complete_logs_securely(self):
-        maven=self.project/'mvnw'
-        maven.write_text('#!/bin/sh\nexit 0\n');maven.chmod(0o755)
         output='Tests run: 2, Failures: 0, Errors: 0, Skipped: 0\n'+'X'*20000
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
+             patch.object(backend_runner.shutil,'which',side_effect=lambda name:'/usr/bin/mvn' if name=='mvn' else None), \
              patch.object(backend_runner.subprocess,'run',return_value=subprocess.CompletedProcess(['mvn'],0,output,'')):
             result=backend_runner.run(self.root,'backend',goal='test',offline=False,allow_network=False)
         self.assertEqual(result['status'],'pass')
@@ -242,5 +241,28 @@ class EvidenceEfficiencyTests(unittest.TestCase):
         self.assertIn('backend',areas)
         areas,_=verification_planner.infer_path_areas(['website/src/app/index.html'])
         self.assertIn('web',areas)
+
+    def test_nested_web_check_logs_are_compacted_for_success_and_failure(self):
+        raw={
+            'status':'fail',
+            'project':'frontend',
+            'checks':{
+                'test':{'exit_code':1,'stdout':'x'*5000,'stderr':'specific failure '+('y'*4000)+' token=secretvalue',
+                        'log_path':'.agentic/local/verification-logs/test.log'},
+                'build':{'exit_code':0,'stdout':'z'*5000,'stderr':''},
+            },
+        }
+        compacted=vm.compact_tool_response('run_project_web_tests',raw,{})
+        test=compacted['checks']['test']
+        build=compacted['checks']['build']
+        self.assertNotIn('stdout',test)
+        self.assertLessEqual(len(test['stderr_excerpt']),efficient.MAX_TOOL_DIAGNOSTIC)
+        self.assertIn('[REDACTED]',test['stderr_excerpt'])
+        self.assertNotIn('secretvalue',test['stderr_excerpt'])
+        self.assertEqual(test['log_path'],'.agentic/local/verification-logs/test.log')
+        self.assertNotIn('stdout',build)
+        self.assertNotIn('stderr_excerpt',build)
+        self.assertLess(len(json.dumps(compacted)),len(json.dumps(raw))//3)
+
 
 if __name__=='__main__':unittest.main()

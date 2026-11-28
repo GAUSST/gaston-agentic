@@ -153,34 +153,62 @@ def matching_backend_evidence(root:Path, target_folder:Path, project:str, select
     return (winner[1],winner[2]) if winner else None
 
 
-def compact_outcome(outcome:dict, *, failure:bool=False)->dict:
-    """Preserve failure, provenance, counts and reason; remove only bulky logs."""
-    if not isinstance(outcome,dict):return outcome
-    value=dict(outcome)
-    evidence=value.get('evidence')
-    if isinstance(evidence,dict):
-        text=str(evidence.get('stdout_tail') or '')+'\n'+str(evidence.get('stderr_tail') or '')
-        reports=re.findall(r'Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)',text)
-        if reports:
-            n,failed,errors,skipped=map(int,reports[-1])
-            value['last_test_summary']={'run':n,'failed':failed,'errors':errors,'skipped':skipped}
-
-        # Backend runner nests text under evidence; other runners sometimes
-        # return a flat evidence object. Summarize both without modifying disk.
-        subset={}
-        for k,v in evidence.items():
-            if k in ('stdout_tail','stderr_tail','stdout','stderr','log','logs','output'):
-                if failure and isinstance(v,str) and v:
-                    subset[k+'_excerpt']=v[-MAX_TOOL_DIAGNOSTIC:]
-            else:
-                subset[k]=v
-        value['evidence']=subset
-    for k in ('stdout_tail','stderr_tail','stdout','stderr','output'):
-        if k in value:
-            if failure and isinstance(value[k],str):value[k+'_excerpt']=value[k][-MAX_TOOL_DIAGNOSTIC:]
-            value.pop(k,None)
+def _safe_diagnostic_excerpt(value: str) -> str:
+    """Avoid returning common credential/OTP formats in tool diagnostics."""
+    value=re.sub(r'(?i)\bBearer\s+\S+','Bearer [REDACTED]',value)
+    value=re.sub(r'(?i)\b(password|passwd|secret|token|api[_-]?key|otp|authorization)\b(\s*[:=]\s*)(["\']?)[^\s,;"\']+\3',
+                 r'\1\2[REDACTED]',value)
+    value=re.sub(r'(?i)(https?://)[^/\s:@]+:[^@\s]+@',r'\1[REDACTED]@',value)
+    value=re.sub(r'\bAKIA[0-9A-Z]{16}\b','[REDACTED_AWS_KEY]',value)
     return value
 
+
+def compact_outcome(outcome:dict, *, failure:bool=False)->dict:
+    """Recursively remove raw subprocess output while preserving concise evidence.
+
+    Logs remain in their local evidence files. A failure gets a short diagnostic
+    excerpt; successful checks return counts, status, provenance and log paths.
+    """
+    if not isinstance(outcome,dict):return outcome
+    log_fields={'stdout_tail','stderr_tail','stdout','stderr','output','log','logs','summary'}
+    collected=[]
+
+    def visit(value, failed=False):
+        if isinstance(value,dict):
+            local_failed=failed or value.get('status') in ('blocked','fail') or (
+                isinstance(value.get('exit_code'),int) and value.get('exit_code')!=0)
+            compact={}
+            for key,item in value.items():
+                if key in log_fields:
+                    if isinstance(item,str):
+                        collected.append(item)
+                        if local_failed and item:
+                            compact[key+'_excerpt']=_safe_diagnostic_excerpt(item[-MAX_TOOL_DIAGNOSTIC:])
+                    continue
+                if isinstance(item,dict):
+                    compact[key]=visit(item,local_failed)
+                elif isinstance(item,list):
+                    compact[key]=[visit(child,local_failed) if isinstance(child,(dict,list)) else child for child in item]
+                else:
+                    compact[key]=item
+            return compact
+        if isinstance(value,list):
+            return [visit(child,failed) if isinstance(child,(dict,list)) else child for child in value]
+        return value
+
+    value=visit(outcome,failure)
+    text='\n'.join(collected)
+    reports=re.findall(r'Tests run:\s*(\d+),\s*Failures:\s*(\d+),\s*Errors:\s*(\d+),\s*Skipped:\s*(\d+)',text)
+    if reports:
+        n,failed_count,errors,skipped=map(int,reports[-1])
+        value['last_test_summary']={'run':n,'failed':failed_count,'errors':errors,'skipped':skipped}
+    else:
+        passed=re.findall(r'(\d+)\s+tests?\s+passed',text,re.I)
+        failed_reports=re.findall(r'(\d+)\s+tests?\s+failed',text,re.I)
+        if passed or failed_reports:
+            value['last_test_summary']={'passed':int(passed[-1]) if passed else 0,
+                                        'failed':int(failed_reports[-1]) if failed_reports else 0}
+    return value
 
 def record_tool_telemetry(root:Path, name:str, task_id:str|None, duration_seconds:float, output:dict)->None:
     """Log size/timing only, never arguments, prompts, code, logs or credentials."""

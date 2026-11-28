@@ -20,8 +20,12 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         (self.project/'pom.xml').write_text('<project/>')
 
     def test_executable_project_wrapper_wins_over_system_maven(self):
+        self._add_maven_wrapper_properties()
         wrapper=self.project/'mvnw'
         wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/maven-user/wrapper/dists/'
+              'apache-maven-3.9.9-bin/hash/apache-maven-3.9.9/bin/mvn')
+        dist.parent.mkdir(parents=True);dist.write_text('#!/bin/sh\nexit 0\n')
         seen={}
         def run(argv,**kwargs):
             seen['argv']=argv
@@ -39,6 +43,33 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         properties.parent.mkdir(parents=True)
         properties.write_text('distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip\n')
         return properties
+
+    def test_cached_gradle_all_distribution_allows_offline_execution(self):
+        (self.project/'build.gradle').write_text('plugins {}')
+        properties=self.project/'.gradle/wrapper/gradle-wrapper.properties'
+        properties.parent.mkdir(parents=True)
+        properties.write_text('distributionUrl=https://services.gradle.org/distributions/gradle-8.8-all.zip')
+        wrapper=self.project/'gradlew';wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/gradle-home/wrapper/dists/'
+              'gradle-8.8-all/hash/gradle-8.8/bin/gradle')
+        dist.parent.mkdir(parents=True);dist.write_text('cached')
+        seen={}
+        def execute(argv,**kwargs):
+            seen['argv']=argv
+            return subprocess.CompletedProcess(argv,0,stdout='BUILD SUCCESS',stderr='')
+        with patch.object(backend_runner,'installed_jdks',return_value=[]), patch.object(backend_runner.shutil,'which',return_value='/usr/bin/gradle'), patch.object(backend_runner.subprocess,'run',side_effect=execute):
+            result=backend_runner.run(self.root,'backend',goal='test-compile',offline=True,allow_network=False)
+        self.assertEqual(result['status'],'pass')
+        self.assertEqual(result['runner'],'gradlew')
+        self.assertIn('--offline',seen['argv'])
+
+    def test_unconfigured_wrapper_is_blocked_offline(self):
+        wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
+        with patch.object(backend_runner,'installed_jdks',return_value=[]), patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), patch.object(backend_runner.subprocess,'run') as run:
+            result=backend_runner.run(self.root,'backend',goal='test-compile',offline=True,allow_network=False)
+        self.assertEqual(result['status'],'blocked')
+        self.assertEqual(result['reason_code'],'DEPENDENCY_RESOLUTION_UNAVAILABLE')
+        run.assert_not_called()
 
     def test_cached_wrapper_distribution_allows_offline_execution(self):
         self._add_maven_wrapper_properties()
@@ -78,7 +109,7 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
              patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), \
              patch.object(backend_runner.subprocess,'run',side_effect=execute):
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(result['status'],'pass')
         self.assertEqual(result['resolution_mode'],'online_fallback')
         self.assertEqual(seen['argv'][0],str(wrapper))
@@ -99,9 +130,11 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_explicit_authorization_retries_online_once_after_dependency_block(self):
         offline={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
                  'reason':'parent POM not cached','runner':'mvnw','elapsed_seconds':1.2}
-        online={'status':'pass','runner':'mvnw','exit_code':0,'elapsed_seconds':8.4}
+        online={'status':'pass','runner':'mvnw','exit_code':0,'elapsed_seconds':8.4,'network_allowed':True,
+                'network_usage':'download_observed','network_attempted':True,
+                'network_scope':'Maven dependency resolution only'}
         with patch.object(backend_runner,'run',side_effect=[offline,online]) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(run.call_count,2)
         self.assertEqual(run.call_args_list[0].kwargs,{'goal':'test-compile','offline':True,'allow_network':False,'timeout':300})
         self.assertEqual(run.call_args_list[1].kwargs,{'goal':'test-compile','offline':False,'allow_network':True,'timeout':300})
@@ -114,7 +147,7 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_network_fallback_does_not_retry_cache_permission_failure(self):
         blocked={'status':'blocked','reason_code':'CACHE_UNAVAILABLE','reason':'read-only cache'}
         with patch.object(backend_runner,'run',return_value=blocked) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         run.assert_called_once()
         self.assertEqual(result['reason_code'],'CACHE_UNAVAILABLE')
         self.assertNotIn('network_attempted',result)
@@ -122,21 +155,26 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_network_fallback_does_not_retry_source_compile_failure(self):
         failed={'status':'fail','reason_code':None,'reason':'Java source compilation error'}
         with patch.object(backend_runner,'run',return_value=failed) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         run.assert_called_once()
         self.assertEqual(result['status'],'fail')
 
     def test_online_fallback_stays_blocked_when_sandbox_denies_network(self):
         offline={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'not cached'}
-        online={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'unknown host'}
+        online={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'unknown host',
+                'network_allowed':True,'network_usage':'request_observed','network_attempted':True}
         with patch.object(backend_runner,'run',side_effect=[offline,online]):
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(result['status'],'blocked')
         self.assertTrue(result['network_attempted'])
         self.assertIn('sandbox',result['reason'])
 
     def test_maven_offline_origin_metadata_error_is_dependency_block(self):
+        self._add_maven_wrapper_properties()
         wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 1\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/maven-user/wrapper/dists/'
+              'apache-maven-3.9.9-bin/hash/apache-maven-3.9.9/bin/mvn')
+        dist.parent.mkdir(parents=True);dist.write_text('cached')
         message='Cannot access central in offline mode and the artifact org.example:parent:pom:1 has not been downloaded from it before.'
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
              patch.object(backend_runner.subprocess,'run',return_value=subprocess.CompletedProcess([],1,stdout=message,stderr='')):
@@ -212,7 +250,8 @@ class StrictCompileReceiptTests(unittest.TestCase):
 
     def test_builder_and_lead_prompts_require_explicit_network_authorization(self):
         import eng
-        self.assertIn('--allow-network',eng.builder_runtime_brief())
+        self.assertIn('offline-only',eng.builder_runtime_brief())
+        self.assertIn('prepare_builder_dependencies',eng.builder_runtime_brief())
         self.assertIn('developer approval',eng.builder_runtime_brief())
         self.assertIn('Never infer network consent',eng.lead_runtime_brief())
 

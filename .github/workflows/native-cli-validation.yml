@@ -54,6 +54,22 @@ jobs:
         run: python -m unittest discover -s .agentic -p 'test_verification_planner.py' -v
         env:
           PYTHONPATH: .agentic
+      - name: Offline backend network policy regression
+        run: python -m unittest discover -s .agentic -p 'test_network_policy.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Per-document review reuse regression
+        run: python -m unittest discover -s .agentic -p 'test_documentation_review.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Auditable work-plan supersession regression
+        run: python -m unittest discover -s .agentic -p 'test_work_plan_supersession.py' -v
+        env:
+          PYTHONPATH: .agentic
+      - name: Private verification log persistence regression
+        run: python -m unittest discover -s .agentic -p 'test_verification_logs.py' -v
+        env:
+          PYTHONPATH: .agentic
       - name: Engineering quality contract regression
         run: python -m unittest discover -s .agentic -p 'test_engineering_quality_contract.py' -v
         env:

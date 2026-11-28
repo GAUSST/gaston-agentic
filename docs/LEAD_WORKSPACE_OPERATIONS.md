@@ -17,6 +17,9 @@ The Engineering Lead should not consume a second agent's context or tokens to pe
 | `workspace_note` | Create/append `.md` notes under `.agentic/local/lead-notes/` or an existing task's `lead-notes/` | Only owned note subdirectories, no application files |
 | `workspace_document` | Create, append, or replace a uniquely matched passage in workspace `docs/` Markdown/txt files | Developer-requested; no AGENTS/CLAUDE.md or application/source edits |
 | `workspace_database` | PostgreSQL readiness, metadata, constraints, indexes, statistics; opted-in synthetic table counts, duplicates and samples | `GASTON_READONLY_DATABASE_URL` required; loopback only, fixed SQL, enforced read-only transaction |
+| `supersede_work_item` | Retire an unstarted duplicate/obsolete plan item in favour of an explicit replacement and reason | Old item and history are preserved; only pending unstarted dependencies are rewired; superseded is not done |
+
+A superseded plan item remains in the audit history and is not counted as completed work. The replacement must pass its own acceptance gates before integrated checkpoint acceptance; pending dependents are rewired to the replacement, while already-started dependents block the operation.
 
 The existing `git_inspect`, `git_commit`, `finalize_delegated_task`, backend runner, curl checks, Playwright and Maestro remain available. Claude's native `Read`, `Glob` and `Grep` should be used to read actual application source.
 

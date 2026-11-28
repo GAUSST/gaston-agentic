@@ -246,6 +246,7 @@ def get_plan(root, key):
 
 
 def item_status(root, item):
+    if item.get('superseded_by'):return 'superseded'
     if item['kind']=='inspect':return 'done' if item.get('evidence') else 'pending'
     if not item.get('task_id'):return 'pending'
     folder=project_state(root)/'runs'/item['task_id'];state=read_record(folder/'state.json')
@@ -274,7 +275,8 @@ def plan_status(root,key):
             blockers.append('overlapping_verification_scope')
         result.append({**v,'status':statuses[k],'ready':ready,'dependency_ready':ready,
                        'executable':ready and not blockers,'execution_blockers':blockers})
-    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'active_verification':verification,'note':'Run executable independent Lead items while Builder works; dependency-ready items may be blocked. Use wait_for_builder once no independent work is executable; never mark deferred work done. Then perform integrated checkpoint acceptance. Done slices do not certify the combined result.'}
+    resolved=all(x in ('done','superseded') for x in statuses.values())
+    return {'status':'ready','plan_id':key,'goal':plan['goal'],'items':result,'all_items_done':all(x=='done' for x in statuses.values()),'all_items_resolved':resolved,'checkpoint_task_id':plan.get('checkpoint_task_id'),'checkpoint_stage':read_record(project_state(root)/'runs'/plan.get('checkpoint_task_id','_')/'state.json').get('stage') if plan.get('checkpoint_task_id') else None,'active_builder_tasks':running,'active_verification':verification,'note':'Superseded items are auditable retirements, not completed work. Every replacement item must still be completed before integrated checkpoint acceptance. Run executable independent Lead items while Builder works; dependency-ready items may be blocked. Use wait_for_builder once no independent work is executable. Done slices do not certify the combined result.'}
 
 
 def select_item(root, key, name, owner, kind):
@@ -284,6 +286,61 @@ def select_item(root, key, name, owner, kind):
     if any(item_status(root,plan['items'][d])!='done' for d in item['depends_on']):raise ValueError('Complete prerequisite work items first')
     if item.get('requires_idle_workspace') and active_builders(root):raise ValueError('Work item requires an idle workspace; collect Builder completion first')
     return plan,item
+
+
+def supersede_work_item(root,key,name,replacement_name,reason):
+    """Retire one unstarted plan item in favour of an explicit replacement."""
+    plan=get_plan(root,key)
+    if plan.get('checkpoint_task_id'):
+        checkpoint=read_record(project_state(root)/'runs'/plan['checkpoint_task_id']/'state.json')
+        if checkpoint.get('lead_verified') and checkpoint.get('stage')=='ready_for_human_release_review':
+            raise ValueError('Checkpoint already accepted; create a new plan for new work')
+    item=plan['items'].get(name)
+    replacement=plan['items'].get(replacement_name)
+    if not item or not replacement:raise ValueError('Both original and replacement work items must exist in this plan')
+    if name==replacement_name:raise ValueError('A work item cannot supersede itself')
+    if item.get('superseded_by'):raise ValueError('Work item is already superseded')
+    if item.get('task_id') or item_status(root,item)!='pending':
+        raise ValueError('Only an unstarted pending work item can be superseded; preserve started task history')
+    if replacement.get('superseded_by'):raise ValueError('Replacement item is itself superseded')
+    if not isinstance(reason,str) or not reason.strip():raise ValueError('Record why the original item is a duplicate or obsolete')
+    # A replacement cannot depend on the item it replaces. Do not rewrite
+    # the dependency history of a replacement that has already started.
+    if name in replacement.get('depends_on',[]):
+        if replacement.get('task_id') or item_status(root,replacement)!='pending':
+            raise ValueError('Replacement already started and depends on the original item')
+        replacement['depends_on']=[dep for dep in replacement.get('depends_on',[]) if dep!=name]
+    # Rewire only unstarted pending dependents. A completed dependent keeps its
+    # historical dependency; a running dependent makes this operation unsafe.
+    rewired=[]
+    for other_name,other in plan['items'].items():
+        if other_name==name or name not in other.get('depends_on',[]):continue
+        status=item_status(root,other)
+        if status=='done' or status=='superseded':continue
+        if status!='pending' or other.get('task_id'):
+            raise ValueError('Cannot supersede an item used by an already-started dependent: '+other_name)
+        deps=[]
+        for dep in other['depends_on']:
+            dep=replacement_name if dep==name else dep
+            if dep not in deps:deps.append(dep)
+        other['depends_on']=deps
+        rewired.append(other_name)
+    item['superseded_by']=replacement_name
+    item['superseded_reason']=reason.strip()
+    item['superseded_at']=time.time()
+    # Validate the dependency graph before persisting the audit record.
+    pending=set(plan['items']);resolved=set()
+    while pending:
+        ready={current for current in pending if set(plan['items'][current].get('depends_on',[]))<=resolved}
+        if not ready:raise ValueError('Supersession would create a missing or cyclic dependency')
+        resolved.update(ready);pending.difference_update(ready)
+    put(plan_file(root,key),plan)
+    result=plan_status(root,key)
+    result['superseded_item']=name
+    result['replacement_item']=replacement_name
+    result['rewired_dependents']=rewired
+    result['note']='Original item retained as superseded; replacement work remains independently required.'
+    return result
 
 
 def defer_until_idle(root, key, name, reason):

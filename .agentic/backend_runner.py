@@ -146,15 +146,22 @@ def _wrapper_distribution_name(properties: Path) -> str | None:
     if not match:return None
     from urllib.parse import urlsplit
     name=Path(urlsplit(match.group(1).strip()).path).name
-    for suffix in ('-bin.tar.gz','-bin.zip','.tar.gz','.zip'):
-        if name.endswith(suffix):return name[:-len(suffix)].removesuffix('-bin')
+    for suffix in ('-bin.tar.gz','-all.zip','-bin.zip','.tar.gz','.zip'):
+        if name.endswith(suffix):return name[:-len(suffix)].removesuffix('-bin').removesuffix('-all')
+    return None
+
+
+def dependency_network_attempted(usage):
+    if usage in ('request_observed','download_observed'):return True
+    if usage=='not_used_by_build_tool':return False
     return None
 
 
 def _wrapper_distribution_cached(properties: Path, user_home: Path, executable: str) -> bool:
     """Avoid an implicit wrapper download during an offline-only compile."""
+    if not properties.is_file():return False
     name=_wrapper_distribution_name(properties)
-    if not name:return True  # custom wrapper or nonstandard URL: let its own runner report
+    if not name:return False  # Unknown/custom distribution cannot be proven cached.
     distributions=user_home/'wrapper'/'dists'
     if not distributions.is_dir():return False
     binary='mvn' if executable=='maven' else 'gradle'
@@ -165,14 +172,28 @@ def _wrapper_distribution_cached(properties: Path, user_home: Path, executable: 
         return False
 
 
+def dependency_network_usage(stdout: str, stderr: str, network_allowed: bool) -> str:
+    """Report only dependency-manager activity visible in its own output.
+
+    This is deliberately not described as process-wide network monitoring:
+    trusted project test code is not OS-network-isolated by this runner.
+    """
+    output = (str(stdout or '') + '\n' + str(stderr or ''))
+    if re.search(r'\bDownloaded from\b|\bDownloaded\b', output, re.I):
+        return 'download_observed'
+    if re.search(r'\bDownloading from\b|\bDownloading\s+https?://|Could not transfer artifact|Could not (?:GET|HEAD|POST|PUT)|HTTP response code:\s*\d{3}|status code:\s*\d{3}|401 Unauthorized|Unknown host|Connection timed out', output, re.I):
+        return 'request_observed'
+    return 'unknown' if network_allowed else 'not_used_by_build_tool'
+
+
 def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str | None = None,
-        timeout: int = 300, offline: bool = False, allow_network: bool = True) -> dict:
+        timeout: int = 300, offline: bool = True, allow_network: bool = False) -> dict:
     """Execute a bounded Java test within the exact discovered project root.
 
-    A Maven repo under .agentic/local avoids writing ~/.m2. If network is
-    unavailable, never claim a test failure; report dependency resolution as
-    blocked. Network is controlled by caller and cannot be used against an
-    arbitrary URL: the tool only invokes the project build runner.
+    Maven/Gradle dependency resolution is offline by default. An online retry
+    is possible only through a caller that has separately validated explicit
+    developer approval. Project build/test code remains trusted code, not an
+    OS-level network sandbox; its network activity is therefore not inferred.
     """
     root = Path(root).resolve()
     if not isinstance(relative_path,str) or Path(relative_path).is_absolute():
@@ -202,6 +223,11 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
     env['MAVEN_USER_HOME'] = str(cache/'maven-user')
     env['GRADLE_USER_HOME'] = str(cache/'gradle-home')
     env['CI'] = 'true'
+    if offline or not allow_network:
+        # Do not let inherited proxy settings silently re-enable dependency traffic.
+        for key in tuple(env):
+            if key.lower() in {'http_proxy','https_proxy','all_proxy','no_proxy'}:
+                env.pop(key, None)
     required=required_java_release(directory)
     available=installed_jdks()
     selected=select_jdk(required,available)
@@ -222,11 +248,13 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
         wrapper_ready=wrapper.is_file() and (os.name=='nt' or os.access(wrapper,os.X_OK))
         binary=str(wrapper) if wrapper_ready else shutil.which('mvn')
         if not binary:return {'status':'blocked','reason_code':'RUNNER_UNAVAILABLE','reason':'Executable Maven wrapper or system Maven not found'}
-        if offline and wrapper_ready and not _wrapper_distribution_cached(directory/'.mvn/wrapper/maven-wrapper.properties',Path(env['MAVEN_USER_HOME']),'maven'):
+        if (offline or not allow_network) and wrapper_ready and not _wrapper_distribution_cached(directory/'.mvn/wrapper/maven-wrapper.properties',Path(env['MAVEN_USER_HOME']),'maven'):
             return {'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
-                    'reason':'Pinned Maven Wrapper distribution is not cached; online fallback requires explicit approval',
+                    'reason':'Pinned Maven Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'runner':'mvnw','project':rel,'build_system':build,'goal':goal,
-                    'cache_path':str(cache.relative_to(root)),'network_allowed':False}
+                    'cache_path':str(cache.relative_to(root)),'network_allowed':False,
+                    'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
+                    'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated'}
         repo=cache/'maven-repository'
         try:repo.mkdir(parents=True,exist_ok=True)
         except OSError as exc:
@@ -241,6 +269,14 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
         wrapper=directory/('gradlew.bat' if os.name=='nt' else 'gradlew')
         binary = str(wrapper) if wrapper.is_file() else shutil.which('gradle')
         if not binary:return {'status':'blocked','reason':'Gradle binary or wrapper not found'}
+        wrapper_ready=wrapper.is_file()
+        if (offline or not allow_network) and wrapper_ready and not _wrapper_distribution_cached(directory/'.gradle/wrapper/gradle-wrapper.properties',Path(env['GRADLE_USER_HOME']),'gradle'):
+            return {'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
+                    'reason':'Pinned Gradle Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
+                    'runner':'gradlew','project':rel,'build_system':build,'goal':goal,
+                    'cache_path':str(cache.relative_to(root)), 'network_allowed':False,
+                    'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
+                    'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated'}
         args=[binary,'--no-daemon','--console=plain']
         if offline or not allow_network:args+=['--offline']
         args += ['testClasses' if goal=='test-compile' else 'test' if goal=='test' else 'check']
@@ -313,12 +349,18 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
     status = 'pass' if code==0 else 'blocked' if cache_failure or dependency_failure else 'fail'
     reason_code=('CACHE_UNAVAILABLE' if cache_failure else
                  'DEPENDENCY_RESOLUTION_UNAVAILABLE' if dependency_failure else None)
+    network_allowed = bool(allow_network and not offline)
+    network_usage=dependency_network_usage(p.stdout or '',p.stderr or '',network_allowed)
     return {'status':status,'reason_code':reason_code,'project':rel,'build_system':build,'goal':goal,
             'test_filter':test_filter,'exit_code':code,'runner':Path(binary).name,
             'elapsed_seconds':round(time.monotonic()-started,2),
             'cache_path':str(cache.relative_to(root)),
             'log_path':logs,
-            'network_allowed':bool(allow_network and not offline),
+            'network_allowed':network_allowed,
+            'network_policy':'approved_online' if network_allowed else 'offline',
+            'network_usage':network_usage,
+            'network_attempted':dependency_network_attempted(network_usage),
+            'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated',
             'required_java':required,'selected_jdk':selected,'installed_jdks':available,
             'evidence':{'stdout_tail':stdout[-6000:],'stderr_tail':stderr[-4000:]},
             **({'reason':'Dependency cache is not writable; build did not execute' if reason_code=='CACHE_UNAVAILABLE' else 'Dependency resolution unavailable; build did not complete' } if status=='blocked' else {})}

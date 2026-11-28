@@ -35,6 +35,12 @@ class BuilderDependencyPreparationTests(unittest.TestCase):
         self.backend=self.root/'arbitrary-java-service';self.backend.mkdir()
         (self.backend/'pom.xml').write_text('<project/>')
         wrapper=self.backend/'mvnw';wrapper.write_text(WRAPPER);wrapper.chmod(0o755)
+        properties=self.backend/'.mvn/wrapper/maven-wrapper.properties'
+        properties.parent.mkdir(parents=True)
+        properties.write_text('distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip')
+        cached=(self.root/'.agentic/local/backend-dependencies/maven-user/wrapper/dists/'
+                'apache-maven-3.9.9-bin/hash/apache-maven-3.9.9/bin/mvn')
+        cached.parent.mkdir(parents=True);cached.write_text('cached')
         self.patch_root=patch.object(vm,'ROOT',self.root);self.patch_root.start();self.addCleanup(self.patch_root.stop)
         self.patch_java=patch.object(backend_runner,'installed_jdks',return_value=[]);self.patch_java.start();self.addCleanup(self.patch_java.stop)
 
@@ -56,6 +62,11 @@ class BuilderDependencyPreparationTests(unittest.TestCase):
         self.assertEqual(result['status'],'pass',result)
         self.assertTrue(result['ready_for_delegation'])
         self.assertEqual(result['preflight']['resolution_mode'],'online_fallback')
+        self.assertTrue(result['network_allowed'])
+        self.assertEqual(result['network_policy'],'approved_online')
+        self.assertEqual(result['network_usage'],'unknown')
+        self.assertIsNone(result['network_attempted'])
+        self.assertEqual(result['network_approval_quote'],'Yes, download project build dependencies')
         compiled=builder_compile.check(self.root,'arbitrary-java-service')
         self.assertEqual(compiled['status'],'pass',compiled)
         self.assertEqual(compiled['resolution_mode'],'offline_cache')
