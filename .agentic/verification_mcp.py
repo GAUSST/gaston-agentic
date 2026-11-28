@@ -377,7 +377,7 @@ def run_backend_tests(project=None, goal='test', test_filter=None, offline=None,
     usage=result.get('network_usage','unknown' if network_allowed else 'not_used_by_build_tool')
     return {**result,'network_allowed':network_allowed,
             'network_policy':'approved_online' if network_allowed else 'offline',
-            'network_usage':usage,'network_attempted':result.get('network_attempted',usage in ('request_observed','download_observed')),
+            'network_usage':usage,'network_attempted':result.get('network_attempted',backend_runner.dependency_network_attempted(usage)),
             'network_scope':result.get('network_scope','Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')}
 
 
