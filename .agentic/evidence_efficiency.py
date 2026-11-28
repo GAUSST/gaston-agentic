@@ -153,6 +153,16 @@ def matching_backend_evidence(root:Path, target_folder:Path, project:str, select
     return (winner[1],winner[2]) if winner else None
 
 
+def _safe_diagnostic_excerpt(value: str) -> str:
+    """Avoid returning common credential/OTP formats in tool diagnostics."""
+    value=re.sub(r'(?i)\bBearer\s+\S+','Bearer [REDACTED]',value)
+    value=re.sub(r'(?i)\b(password|passwd|secret|token|api[_-]?key|otp|authorization)\b(\s*[:=]\s*)(["\']?)[^\s,;"\']+\3',
+                 r'\1\2[REDACTED]',value)
+    value=re.sub(r'(?i)(https?://)[^/\s:@]+:[^@\s]+@',r'\1[REDACTED]@',value)
+    value=re.sub(r'\bAKIA[0-9A-Z]{16}\b','[REDACTED_AWS_KEY]',value)
+    return value
+
+
 def compact_outcome(outcome:dict, *, failure:bool=False)->dict:
     """Recursively remove raw subprocess output while preserving concise evidence.
 
@@ -173,7 +183,7 @@ def compact_outcome(outcome:dict, *, failure:bool=False)->dict:
                     if isinstance(item,str):
                         collected.append(item)
                         if local_failed and item:
-                            compact[key+'_excerpt']=item[-MAX_TOOL_DIAGNOSTIC:]
+                            compact[key+'_excerpt']=_safe_diagnostic_excerpt(item[-MAX_TOOL_DIAGNOSTIC:])
                     continue
                 if isinstance(item,dict):
                     compact[key]=visit(item,local_failed)
