@@ -104,7 +104,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                 project/'.mvn/wrapper/maven-wrapper.properties',Path(env['MAVEN_USER_HOME']),'maven'):
             return {'status':'blocked','project':relative_path,'managed_application':False,
                     'reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
-                    'reason':'Pinned Maven Wrapper distribution is not cached; online fallback requires explicit approval',
+                    'reason':'Pinned Maven Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
                     'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool'}
     except (ValueError,OSError,AttributeError) as exc:
         return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False,
