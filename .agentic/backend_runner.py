@@ -348,7 +348,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
             'log_path':logs,
             'network_allowed':network_allowed,
             'network_policy':'approved_online' if network_allowed else 'offline',
-            'network_usage':dependency_network_usage(stdout,stderr,network_allowed),
+            'network_usage':dependency_network_usage(p.stdout or '',p.stderr or '',network_allowed),
             'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated',
             'required_java':required,'selected_jdk':selected,'installed_jdks':available,
             'evidence':{'stdout_tail':stdout[-6000:],'stderr_tail':stderr[-4000:]},
