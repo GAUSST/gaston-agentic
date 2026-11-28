@@ -2,7 +2,7 @@
 
 ## v1.7.8
 
-- Make Maven/Gradle backend acceptance and managed API startup offline by default. Online dependency resolution requires explicit per-run developer approval; records distinguish permission from observed dependency-manager activity.
+- Make Maven/Gradle backend acceptance and managed API startup offline by default. Online dependency resolution requires explicit per-run developer approval; records distinguish permission from observed dependency-manager activity. This is dependency-manager enforcement, not an OS-level network sandbox for arbitrary project code.
 - Persist complete verification subprocess logs in private local files and compact nested success/failure output while preserving diagnostic excerpts and log paths.
 - Reuse unchanged documentation reviews by per-file content hash and require a fresh cross-file integration review for each implementation revision.
 - Add auditable work-item supersession with an explicit replacement, reason and safe dependency rewiring; superseded work is not treated as completed.
