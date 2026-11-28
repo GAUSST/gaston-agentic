@@ -79,8 +79,14 @@ def _stop(proc):
     from platform_compat import stop_owned
     stop_owned(proc, isolated_group=True, grace_seconds=10)
 
-def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check=None):
+def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check=None,
+        allow_network=False,explicit_developer_approval=False,approval_quote=''):
     root=Path(root).resolve()
+    network_allowed=bool(allow_network)
+    if network_allowed and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
+        return {'status':'blocked','project':relative_path,'managed_application':False,
+                'reason':'Online backend verification requires explicit developer approval',
+                'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool'}
     try:
         if not isinstance(relative_path,str) or Path(relative_path).is_absolute() or '..' in Path(relative_path).parts:raise ValueError('Choose a workspace-relative Maven project')
         project=(root/relative_path).resolve()
@@ -94,18 +100,28 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
         wrapper=project/('mvnw.cmd' if os.name=='nt' else 'mvnw')
         binary=str(wrapper) if wrapper.is_file() else shutil.which('mvn')
         if not binary:raise ValueError('Maven unavailable')
+        if not network_allowed and wrapper.is_file() and not backend_runner._wrapper_distribution_cached(
+                project/'.mvn/wrapper/maven-wrapper.properties',Path(env['MAVEN_USER_HOME']),'maven'):
+            return {'status':'blocked','project':relative_path,'managed_application':False,
+                    'reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
+                    'reason':'Pinned Maven Wrapper distribution is not cached; online fallback requires explicit approval',
+                    'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool'}
     except (ValueError,OSError,AttributeError) as exc:
         return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False}
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     base=f'http://127.0.0.1:{port}'
     env['AGENTIC_TEST_API_BASE_URL']=base
-    cmd=[binary,'-B','-ntp',f'-Dmaven.repo.local={cache/"maven-repository"}',
-         '-Dspring-boot.run.main-class='+main,'-Dspring-boot.run.profiles=gaston-e2e',
-         f'-Dspring-boot.run.arguments=--server.address=127.0.0.1 --server.port={port}',
-         'test-compile','spring-boot:test-run']
+    cmd=[binary,'-B','-ntp',f'-Dmaven.repo.local={cache/"maven-repository"}']
+    if not network_allowed:cmd.append('-o')
+    cmd += ['-Dspring-boot.run.main-class='+main,'-Dspring-boot.run.profiles=gaston-e2e',
+            f'-Dspring-boot.run.arguments=--server.address=127.0.0.1 --server.port={port}',
+            'test-compile','spring-boot:test-run']
     local=project_state(root)/'local';local.mkdir(parents=True,exist_ok=True)
-    result={'status':'blocked','project':relative_path,'managed_application':False}
+    result={'status':'blocked','project':relative_path,'managed_application':False,
+            'network_allowed':network_allowed,'network_policy':'approved_online' if network_allowed else 'offline',
+            'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool',
+            'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     proc=None
     # Private fixture logs may include test OTPs. Never send raw logs through MCP.
     with tempfile.TemporaryDirectory(prefix='gaston-e2e-',dir=local) as td:
@@ -142,6 +158,11 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
         except (OSError,subprocess.TimeoutExpired) as exc:
             result.update(status='blocked',reason='Managed backend launch/check did not complete: '+type(exc).__name__)
         finally:
+            try:
+                startup_text=(Path(td)/'startup.log').read_text(encoding='utf8',errors='replace')
+                result['network_usage']=backend_runner.dependency_network_usage(startup_text,'',network_allowed)
+            except OSError:
+                result['network_usage']='unknown'
             if proc:
                 try:_stop(proc);result['process_cleanup']='complete'
                 except (OSError,subprocess.TimeoutExpired):result.update(status='blocked',process_cleanup='failed',reason='Could not confirm owned application termination')
