@@ -1560,7 +1560,8 @@ def acceptance_evidence_detail(task_id,check_id,include_logs=False):
             path=(ROOT/rel).resolve()
             allowed=(project_state(ROOT)/'local/backend-logs').resolve()
             if path.is_relative_to(allowed) and path.is_file() and not path.is_symlink():
-                result['log_excerpt']=path.read_text(encoding='utf8',errors='replace')[-8000:]
+                import evidence_efficiency
+                result['log_excerpt']=evidence_efficiency._safe_diagnostic_excerpt(path.read_text(encoding='utf8',errors='replace')[-8000:])
         else:
             result['log_excerpt']='Full log unavailable for this check'
     return result
