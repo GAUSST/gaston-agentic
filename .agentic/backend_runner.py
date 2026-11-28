@@ -171,10 +171,10 @@ def dependency_network_usage(stdout: str, stderr: str, network_allowed: bool) ->
     This is deliberately not described as process-wide network monitoring:
     trusted project test code is not OS-network-isolated by this runner.
     """
-    output = (str(stdout or '') + '\\n' + str(stderr or ''))
-    if re.search(r'\\bDownloaded from\\b|\\bDownloaded\\b', output, re.I):
+    output = (str(stdout or '') + '\n' + str(stderr or ''))
+    if re.search(r'\bDownloaded from\b|\bDownloaded\b', output, re.I):
         return 'download_observed'
-    if re.search(r'\\bDownloading from\\b|Could not transfer artifact|HTTP response code:\\s*\\d{3}|401 Unauthorized|Unknown host|Connection timed out', output, re.I):
+    if re.search(r'\bDownloading from\b|Could not transfer artifact|HTTP response code:\s*\d{3}|401 Unauthorized|Unknown host|Connection timed out', output, re.I):
         return 'request_observed'
     return 'unknown' if network_allowed else 'not_used_by_build_tool'
 
