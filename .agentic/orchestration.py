@@ -304,8 +304,12 @@ def supersede_work_item(root,key,name,replacement_name,reason):
         raise ValueError('Only an unstarted pending work item can be superseded; preserve started task history')
     if replacement.get('superseded_by'):raise ValueError('Replacement item is itself superseded')
     if not isinstance(reason,str) or not reason.strip():raise ValueError('Record why the original item is a duplicate or obsolete')
-    # A replacement cannot depend on the item it replaces.
-    replacement['depends_on']=[dep for dep in replacement.get('depends_on',[]) if dep!=name]
+    # A replacement cannot depend on the item it replaces. Do not rewrite
+    # the dependency history of a replacement that has already started.
+    if name in replacement.get('depends_on',[]):
+        if replacement.get('task_id') or item_status(root,replacement)!='pending':
+            raise ValueError('Replacement already started and depends on the original item')
+        replacement['depends_on']=[dep for dep in replacement.get('depends_on',[]) if dep!=name]
     # Rewire only unstarted pending dependents. A completed dependent keeps its
     # historical dependency; a running dependent makes this operation unsafe.
     rewired=[]
