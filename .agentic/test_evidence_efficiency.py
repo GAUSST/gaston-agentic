@@ -243,4 +243,25 @@ class EvidenceEfficiencyTests(unittest.TestCase):
         areas,_=verification_planner.infer_path_areas(['website/src/app/index.html'])
         self.assertIn('web',areas)
 
+    def test_nested_web_check_logs_are_compacted_for_success_and_failure(self):
+        raw={
+            'status':'fail',
+            'project':'frontend',
+            'checks':{
+                'test':{'exit_code':1,'stdout':'x'*5000,'stderr':'specific failure '+('y'*4000),
+                        'log_path':'.agentic/local/verification-logs/test.log'},
+                'build':{'exit_code':0,'stdout':'z'*5000,'stderr':''},
+            },
+        }
+        compacted=vm.compact_tool_response('run_project_web_tests',raw,{})
+        test=compacted['checks']['test']
+        build=compacted['checks']['build']
+        self.assertNotIn('stdout',test)
+        self.assertLessEqual(len(test['stderr_excerpt']),efficient.MAX_TOOL_DIAGNOSTIC)
+        self.assertEqual(test['log_path'],'.agentic/local/verification-logs/test.log')
+        self.assertNotIn('stdout',build)
+        self.assertNotIn('stderr_excerpt',build)
+        self.assertLess(len(json.dumps(compacted)),len(json.dumps(raw))//3)
+
+
 if __name__=='__main__':unittest.main()
