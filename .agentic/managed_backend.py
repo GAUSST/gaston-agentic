@@ -169,7 +169,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                 startup_text=(Path(td)/'startup.log').read_text(encoding='utf8',errors='replace')
                 result['network_usage']=backend_runner.dependency_network_usage(startup_text,'',network_allowed)
                 from platform_compat import persist_verification_log
-                log_path=persist_verification_log(local/'verification-logs',startup_text,captured_stdout+'\\n'+captured_stderr)
+                log_path=persist_verification_log(local/'verification-logs',startup_text,captured_stdout+'\n'+captured_stderr)
                 if log_path:result['log_path']=Path(log_path).resolve().relative_to(root).as_posix()
             except (OSError,ValueError):
                 if network_allowed:result['network_usage']='unknown'
