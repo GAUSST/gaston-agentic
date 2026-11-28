@@ -342,6 +342,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
     reason_code=('CACHE_UNAVAILABLE' if cache_failure else
                  'DEPENDENCY_RESOLUTION_UNAVAILABLE' if dependency_failure else None)
     network_allowed = bool(allow_network and not offline)
+    network_usage=dependency_network_usage(p.stdout or '',p.stderr or '',network_allowed)
     return {'status':status,'reason_code':reason_code,'project':rel,'build_system':build,'goal':goal,
             'test_filter':test_filter,'exit_code':code,'runner':Path(binary).name,
             'elapsed_seconds':round(time.monotonic()-started,2),
@@ -349,7 +350,8 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
             'log_path':logs,
             'network_allowed':network_allowed,
             'network_policy':'approved_online' if network_allowed else 'offline',
-            'network_usage':dependency_network_usage(p.stdout or '',p.stderr or '',network_allowed),
+            'network_usage':network_usage,
+            'network_attempted':network_usage in ('request_observed','download_observed'),
             'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated',
             'required_java':required,'selected_jdk':selected,'installed_jdks':available,
             'evidence':{'stdout_tail':stdout[-6000:],'stderr_tail':stderr[-4000:]},
