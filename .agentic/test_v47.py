@@ -170,7 +170,11 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         self.assertIn('sandbox',result['reason'])
 
     def test_maven_offline_origin_metadata_error_is_dependency_block(self):
+        self._add_maven_wrapper_properties()
         wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 1\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/maven-user/wrapper/dists/'
+              'apache-maven-3.9.9-bin/hash/apache-maven-3.9.9/bin/mvn')
+        dist.parent.mkdir(parents=True);dist.write_text('cached')
         message='Cannot access central in offline mode and the artifact org.example:parent:pom:1 has not been downloaded from it before.'
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
              patch.object(backend_runner.subprocess,'run',return_value=subprocess.CompletedProcess([],1,stdout=message,stderr='')):
