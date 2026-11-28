@@ -69,18 +69,18 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{'repository':{'type':'string','description':'Optional workspace-relative repository path returned by this tool'},'diff':{'type':'boolean','description':'Return bounded tracked-file diffs (untracked paths listed separately)'},'task_id':{'type':'string','description':'Optional Builder task for changed-path attribution diagnostics'}},'additionalProperties':False}},
     {'name':'git_commit','description':'Create ONE local commit in a selected discovered repository using only explicitly named changed files. Requires an explicit developer request; never automatic, no push/reset/rebase, no arbitrary shell. Refuses existing staged changes.',
      'inputSchema':{'type':'object','properties':{'repository':{'type':'string','description':'Exact workspace-relative Git repository, e.g. sample-backend'},'paths':{'type':'array','items':{'type':'string'},'minItems':1,'maxItems':75,'description':'Exact repository-relative file paths to commit, no directories or globs'},'message':{'type':'string','description':'One-line user-authorized commit message'},'explicit_user_request':{'type':'boolean','description':'True ONLY if developer expressly asked for this Git commit in chat'},'requested_by_user':{'type':'string','description':'Brief verbatim quote of the developer commit request for audit; not independent proof of authorization'}},'required':['repository','paths','message','explicit_user_request','requested_by_user'],'additionalProperties':False}},
-    {'name':'finalize_delegated_task','description':'Finalize only after independent review and every required current-revision application acceptance gate passes. Reuse task-linked evidence; missing or failing gates prevent completion. Optionally mark a superseded deletion record.',
-     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'reviewed':{'type':'boolean'},'review_notes':{'type':'string','description':'Specific code/deletion review evidence'},'deleted_paths':{'type':'array','items':{'type':'string'},'description':'Builder-reported workspace-relative files confirmed absent after the deletion'},'project':{'type':'string','description':'Discovered Java project if targeted backend tests need to run'},'test_filter':{'type':'string','description':'Real remaining JUnit test selector, e.g. HealthControllerTest,PingControllerTest'},'supersedes_task_id':{'type':'string','description':'Optional earlier verified task replaced by this deletion; only when its entire file set matches deleted_paths'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','reviewed','review_notes'],'additionalProperties':False}},
+    {'name':'finalize_delegated_task','description':'Finalize only after independent review and every required current-revision application acceptance gate passes. Reuse task-linked evidence; missing or failing gates prevent completion. documentation_reviews may include __integration__ for a current cross-file impact review; unchanged per-document reviews are reused by content hash. Optionally mark a superseded deletion record.',
+     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'reviewed':{'type':'boolean'},'review_notes':{'type':'string','description':'Specific code/deletion review evidence'},'deleted_paths':{'type':'array','items':{'type':'string'},'description':'Builder-reported workspace-relative files confirmed absent after the deletion'},'project':{'type':'string','description':'Discovered Java project if targeted backend tests need to run'},'test_filter':{'type':'string','description':'Real remaining JUnit test selector, e.g. HealthControllerTest,PingControllerTest'},'supersedes_task_id':{'type':'string','description':'Optional earlier verified task replaced by this deletion; only when its entire file set matches deleted_paths'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings. Unchanged documents are reused by content hash; include reserved key __integration__ with a fresh cross-file impact review for the current implementation revision.'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','reviewed','review_notes'],'additionalProperties':False}},
     {'name':'delegate_to_builder','description':'Submit one scoped development task to the persistent Builder without closing the Lead chat; report a task ID. Only use for developer-authorized local changes. High-risk changes need explicit human approval outside this tool.',
      'inputSchema':{'type':'object','properties':{'goal':{'type':'string','description':'Complete authorized local implementation instructions'},'acceptance_criteria':{'type':'array','items':{'type':'string'}},'specification_files':{'type':'array','items':{'type':'string'},'description':'Optional existing workspace-relative specification documents; snapshot once for the Builder without repeating their contents'},'risk':{'type':'string','enum':['normal','high'],'description':'Classify the requested operation, not words in the spec; high-risk external/destructive actions are not supported by this local handoff'}},'required':['goal'],'additionalProperties':False}},
     {'name':'request_builder_revision','description':'Engineering Lead directs a focused correction to the same persistent Builder task. Builder edits files only, with no automatic tests or repair loop. Does not stage, commit or stash.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'feedback':{'type':'string','description':'Complete reviewed implementation defects and requested edits'},'specification_files':{'type':'array','items':{'type':'string'},'description':'Optional additional workspace-relative specification documents'},'risk':{'type':'string','enum':['normal','high']}},'required':['task_id','feedback'],'additionalProperties':False}},
     {'name':'verify_delegated_backend_task','description':'Record independent backend test results and code review, reusing current results when available. A backend pass alone never finalizes a task with incomplete required gates. Run other gates and finalize separately.',
-     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings against current implementation, original specs and contracts; reread final version before declaring complete'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
+     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'project':{'type':'string'},'test_filter':{'type':'string'},'reviewed':{'type':'boolean','description':'True only after independently inspecting the Builder diff and finding no defects'},'review_notes':{'type':'string','description':'Factual independent review findings'},'reviewed_files':{'type':'array','items':{'type':'string'},'description':'Exact workspace-relative implementation files independently inspected by Lead; required if Builder reported blocked after writing code'},'documentation_reviews':{'type':'object','additionalProperties':{'type':'string'},'description':'Exact changed or relevant documentation path -> factual review findings. Unchanged documents are reused by content hash; include reserved key __integration__ with a fresh cross-file impact review for the current implementation revision.'},'documentation_gaps':{'type':'array','items':{'type':'string'},'description':'All unresolved material implementation or documentation findings, including missing required updates; [] only after actual review. Resolve in-scope gaps with same-task Builder revision before acceptance. Track genuinely deferred non-blocking work, with owner/checkpoint and rationale; obtain explicit approval for material risk.'}},'required':['task_id','project','test_filter','reviewed','review_notes'],'additionalProperties':False}},
     {'name':'wait_for_builder','description':'Register one completion wait after delegation or revision; default waits for the actual Builder outcome (up to one hour, covering the normal provider execution deadline). Check executable independent Lead work first. An explicit call always subscribes to actual Builder completion, even if dependency-ready items remain. The native client may manage its own background execution. Never create a Bash watcher, sleep loop or background shell. Do not end with a progress-only response instead of this call. Does not start tests or repair.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
-    {'name':'run_task_acceptance_check','description':'Run task-linked tests. kind=web_verify executes selected project unit/typecheck/lint/build scripts for scoped web slices; kind=web executes real browser acceptance with isolated startup. kind=api with project launches the actual isolated Spring Boot app from its gaston-e2e.json and executes curl assertions; missing fixture is BLOCKED, not passed. kind=mobile for Flutter builds the current standard Android debug APK, installs and launches it on a test emulator, then runs Maestro. Missing prerequisites or ambiguous devices are blocked. Use current evidence and do not rerun unchanged gates.',
-     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','web_verify','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'}},'required':['task_id','kind'],'additionalProperties':False}},
+    {'name':'run_task_acceptance_check','description':'Run task-linked tests. Backend and managed API dependency resolution are offline by default. An online run requires allow_network=true plus explicit_developer_approval=true and a verbatim approval_quote for this specific check. network_usage reports dependency-manager evidence only; project test code is not OS-network-isolated. kind=web_verify executes selected project unit/typecheck/lint/build scripts; kind=web executes browser acceptance; kind=api launches the isolated Spring Boot app from gaston-e2e.json and executes loopback assertions; kind=mobile runs Flutter and Maestro checks. Missing prerequisites are blocked, never passed. Reuse unchanged evidence.',
+     'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'},'kind':{'type':'string','enum':['backend','api','web','web_verify','mobile','flutter_tests','flutter_analyze']},'project':{'type':'string'},'test_filter':{'type':'string'},'relative_path':{'type':'string'},'allow_network':{'type':'boolean','description':'Allow Maven dependency network access for this check; requires explicit developer approval and a verbatim approval_quote'},'explicit_developer_approval':{'type':'boolean','description':'True only after the developer explicitly approved network access for this exact check'},'approval_quote':{'type':'string','description':'Verbatim developer approval; never invent or infer it'}},'required':['task_id','kind'],'additionalProperties':False}},
     {'name':'task_acceptance_report','description':'Compare real recorded backend/API/web/mobile checks against the task risk-based plan; expose missing checks and any untested cross-component paths.',
      'inputSchema':{'type':'object','properties':{'task_id':{'type':'string'}},'required':['task_id'],'additionalProperties':False}},
     {'name':'task_verification_plan','description':'Prepare a risk-based test plan from actual Builder changed files, discovered project test gates, and cross-component impacts. Reports missing coverage; does not run or pass tests.',
@@ -103,8 +103,8 @@ TOOLS = [
      'inputSchema':{'type':'object','properties':{},'additionalProperties':False}},
     {'name':'prepare_builder_dependencies','description':'Before delegating Java work, check or prepare the shared project-local Maven/Gradle cache via a bounded compile-only preflight. Offline by default; authorized online fallback only after explicit developer approval. This is readiness, never task acceptance.',
      'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Exact discovered Java build root; optional only when one is found'},'allow_network':{'type':'boolean','description':'Retry online if offline dependencies are missing; requires explicit developer authorization'},'explicit_developer_approval':{'type':'boolean','description':'True only after developer has explicitly approved a dependency download for this project'},'approval_quote':{'type':'string','description':'Actual developer authorization for dependency fetching; do not fabricate'}},'additionalProperties':False}},
-    {'name':'run_backend_tests','description':'Independently run bounded Maven/Gradle tests in an existing Java repository with a writable toolkit-local cache; no arbitrary shell, source edits or production services. Report actual test output and dependency blockers.',
-     'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Relative Java project path (omit if exactly one discovered project)'},'goal':{'type':'string','enum':['test','verify']},'test_filter':{'type':'string','description':'Optional exact Maven/JUnit test selector (e.g. SlugHelperTest)'},'offline':{'type':'boolean','description':'Do not attempt dependency downloads (default false)'}},'additionalProperties':False}},
+    {'name':'run_backend_tests','description':'Independently run bounded Maven/Gradle tests in an existing Java repository. Dependency resolution is offline by default. Online dependency access requires allow_network=true, explicit_developer_approval=true and a verbatim approval_quote. Records distinguish permission from observed dependency-manager activity; project test code is not OS-network-isolated.',
+     'inputSchema':{'type':'object','properties':{'project':{'type':'string','description':'Relative Java project path (omit if exactly one discovered project)'},'goal':{'type':'string','enum':['test','verify']},'test_filter':{'type':'string','description':'Optional exact Maven/JUnit test selector (e.g. SlugHelperTest)'},'offline':{'type':'boolean','description':'Force offline mode even when network is approved'},'allow_network':{'type':'boolean','description':'Permit dependency downloads for this run; requires explicit developer approval'},'explicit_developer_approval':{'type':'boolean','description':'True only after explicit developer approval for this project/run'},'approval_quote':{'type':'string','description':'Verbatim developer approval; never invent or infer it'}},'additionalProperties':False}},
     {'name':'run_http_smoke','description':'Run a real curl HTTP/JSON assertion against a disposable loopback service. No application changes, external hosts or shell access.',
      'inputSchema':{'type':'object','properties':{},'additionalProperties':False}},
     {'name':'run_local_api_checks','description':'Run an existing declarative API assertion suite using curl against AGENTIC_TEST_API_BASE_URL (loopback only). No arbitrary commands.',
@@ -126,6 +126,7 @@ def _schema(name,description,properties,required):
 _schema('plan_work','Decompose a substantial task into small coherent implementation slices and independent Lead inspections. Record real dependencies and narrow workspace-relative write paths. Inspection belongs to Lead. Set requires_idle_workspace=true for runtime acceptance and other exclusive checks. Do executable independent work while Builder implements. Avoid a single broad checkpoint delegation.',{'goal':_str,'items':{'type':'array','items':_item_schema}},['goal','items'])
 _schema('extend_work_plan','Add concrete newly discovered remediation slices to an unaccepted plan; preserve all existing work and dependencies.',{'plan_id':_str,'items':{'type':'array','items':_item_schema}},['plan_id','items'])
 _schema('defer_work_item','Mark an existing pending Lead item as requiring an idle workspace after an actual execution blocker. Does not close the item, alter dependencies or mark evidence passed.',{'plan_id':_str,'item_id':_str,'reason':_str},['plan_id','item_id','reason'])
+_schema('supersede_work_item','Retire an unstarted duplicate or obsolete plan item with an auditable replacement item and reason. Rewires only pending, unstarted dependents; preserves the old item and history. Never marks work done.',{'plan_id':_str,'item_id':_str,'replacement_item_id':_str,'reason':_str},['plan_id','item_id','replacement_item_id','reason'])
 _schema('inspect_web_application','Launch the actual local Vite application and associated isolated backend if configured; capture private screenshots at responsive widths, with optional project-owned authentication fixture. Does not substitute for formal E2E acceptance. No user environment exports or application dependency installs.',{'project':_str,'routes':_strings,'widths':{'type':'array','items':{'type':'integer'}},'height':{'type':'integer'},'visible':{'type':'boolean'}},['project'])
 _schema('verification_reservation_status','Inspect the current managed verification reservation and process ownership; do not poll repeatedly.',{},[])
 _schema('recover_verification_reservation','Clear an interrupted reservation only after developer explicitly confirms all owned test processes have terminated. Never terminate arbitrary processes or mark evidence passed.',{'developer_confirmed':{'type':'boolean'}},['developer_confirmed'])
@@ -138,7 +139,7 @@ _edit_schema={'type':'object','properties':{'path':_str,'before_sha256':{'type':
 _schema('take_over_builder_task','Take over a narrow existing Builder bug directly before or after two unsuccessful corrections. Record findings and explicit local repair paths; only when Builder is stopped. No additional model invocation.',{'task_id':_str,'reason':_str,'paths':_strings},['task_id','reason','paths'])
 _schema('lead_edit_files','Lead writes actual local test code/fixtures directly, including while Builder edits disjoint code. For small Lead-owned implementation or mandatory takeover after two unsuccessful Builder corrections use purpose=implementation. Batch related edits, including multiple entries for the same path with the same original SHA256 and unique non-overlapping old_text/new_text pairs. All pairs match the original file, not earlier replacements. Full content must stand alone for its path. No production or secret writes. Changes recorded against task; verification still required.',{'task_id':_str,'purpose':{'type':'string','enum':['test_setup','implementation']},'edits':{'type':'array','items':_edit_schema}},['task_id','purpose','edits'])
 _schema('complete_lead_implementation','Finish Lead-owned implementation or takeover after actual edits; marks awaiting independent review, not verified.',{'task_id':_str,'summary':_str},['task_id','summary'])
-_schema('review_work_slice','Record provisional slice review based on real current targeted verification evidence and document review; allows dependent slices to proceed. Not complete checkpoint acceptance. All combined final gates still required.',{'task_id':_str,'review_notes':_str,'documentation_reviews':{'type':'object','additionalProperties':_str},'documentation_gaps':_strings},['task_id','review_notes'])
+_schema('review_work_slice','Record provisional slice review based on real current targeted verification evidence and document review; allows dependent slices to proceed. Unchanged document reviews are reused by content hash; include __integration__ for current cross-file impact review. Not complete checkpoint acceptance. All combined final gates still required.',{'task_id':_str,'review_notes':_str,'documentation_reviews':{'type':'object','additionalProperties':_str},'documentation_gaps':_strings},['task_id','review_notes'])
 _schema('prepare_checkpoint_acceptance','After all planned inspections and implementation slices are reviewed, create one integrated verification task from actual changed paths. Use existing required verification and finalization gates; no extra Builder invocation.',{'plan_id':_str},['plan_id'])
 # Evidence-backed local learning and isolated toolkit evolution.
 _schema('learning_report','Refresh local evidence signals and observed token usage from executed tasks. No extra model calls, no speculative savings. Inspect causes before proposing corrections.',{},[])
@@ -341,20 +342,32 @@ def run_project_web_tests(project=None,visible=False):
 
 
 
-def run_backend_tests(project=None, goal='test', test_filter=None, offline=False):
+def run_backend_tests(project=None, goal='test', test_filter=None, offline=None, allow_network=False,
+                      explicit_developer_approval=False, approval_quote=''):
     if goal not in ('test','verify'):return response('blocked',reason='Lead test verification requires test or verify, not compile-only')
+    if allow_network and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
+        return response('blocked',reason='Online dependency access requires explicit developer approval for this run',
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False)
     import backend_runner
     options=backend_runner.discover(ROOT)
     if not options:
-        return response('blocked',reason='No Maven/Gradle project detected in workspace')
+        return response('blocked',reason='No Maven/Gradle project detected in workspace',
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool')
     if project is None:
         if len(options)!=1:
-            return response('blocked',reason='Multiple Java projects; provide exact project path',projects=options)
+            return response('blocked',reason='Multiple Java projects; provide exact project path',projects=options,
+                            network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool')
         project=options[0]['path']
-    # Runs a named build test, never a shell command. Maven/Gradle project
-    # plugins may execute code: use only with a trusted developer workspace.
-    return backend_runner.run(ROOT,project,goal=goal,test_filter=test_filter,
-                              offline=offline,timeout=600)
+    network_allowed=bool(allow_network and offline is not True)
+    effective_offline=bool(offline) if offline is not None else not network_allowed
+    if not network_allowed:effective_offline=True
+    # Maven/Gradle are always offline unless this call carries explicit approval.
+    result=backend_runner.run(ROOT,project,goal=goal,test_filter=test_filter,
+                               offline=effective_offline,allow_network=network_allowed,timeout=600)
+    return {**result,'network_allowed':bool(result.get('network_allowed',False)),
+            'network_policy':result.get('network_policy','offline'),
+            'network_usage':result.get('network_usage','unknown' if network_allowed else 'not_used_by_build_tool'),
+            'network_scope':result.get('network_scope','Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated')}
 
 
 def prepare_builder_dependencies(project=None, allow_network=False, explicit_developer_approval=False, approval_quote=''):
@@ -1367,12 +1380,18 @@ def task_verification_plan(task_id):
     return response(result['status'],**{k:v for k,v in result.items() if k!='status'})
 
 
-def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relative_path=None,force=False,*,cancel_event=None):
+def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relative_path=None,force=False,
+                              allow_network=False,explicit_developer_approval=False,approval_quote='',*,cancel_event=None):
     if not _authorized_delegate():return response('blocked',reason='Lead MCP authorization missing')
     folder=_task_folder(task_id)
     if not folder:return response('blocked',reason='Unknown task')
     import acceptance_audit,evidence_efficiency,task_runtime
     if kind not in acceptance_audit.GATE_TYPES:return response('blocked',reason='Unsupported acceptance check')
+    if allow_network and kind not in ('backend','api'):
+        return response('blocked',reason='Network approval applies only to backend dependency resolution')
+    if allow_network and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
+        return response('blocked',reason='Online dependency access requires explicit developer approval for this exact check',
+                        network_allowed=False,network_policy='offline',network_usage='not_used_by_build_tool',network_attempted=False)
     state=__import__('task_runtime').read_record(folder/'state.json')
     if state.get('stage') in ('queued_for_builder','implementing','repairing','verifying','lead_implementing','lead_takeover_required'):
         return response('blocked',blocker='workspace_not_idle',requires_idle_workspace=True,active_builder_tasks=orch.active_builders(ROOT),
@@ -1389,7 +1408,9 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
             token = _VERIFICATION_CANCEL.set(cancel_event)
             job_token = _VERIFICATION_JOB.set(reservation.get('windows_job'))
             try:
-                return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event)
+                return _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,task,reservation,cancel_event,
+                                                allow_network=allow_network,explicit_developer_approval=explicit_developer_approval,
+                                                approval_quote=approval_quote)
             finally:
                 _VERIFICATION_JOB.reset(job_token)
                 _VERIFICATION_CANCEL.reset(token)
@@ -1398,7 +1419,8 @@ def run_task_acceptance_check(task_id,kind,project=None,test_filter=None,relativ
     except (OSError,ValueError) as exc:return response('blocked',reason='Verification coordination: '+str(exc))
 
 
-def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,current_task,reservation,cancel_event):
+def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,force,folder,current_task,reservation,cancel_event,
+                             *,allow_network=False,explicit_developer_approval=False,approval_quote=''):
     import acceptance_audit,evidence_efficiency,task_runtime
     # Slice checks select concrete changed JUnit test classes automatically;
     # integrated acceptance retains full-suite verification.
@@ -1435,7 +1457,8 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
                     return response('pass',task_id=task_id,check_id=entry['id'],kind=kind,
                                     evidence=prior['evidence'],reused=True,reused_from=entry['reused_from'],
                                     note='Identical real backend check reused; final integrated acceptance remains fresh.')
-    if kind=='backend':result=_executed_backend(run_backend_tests(project=project,goal='test',test_filter=test_filter))
+    if kind=='backend':result=_executed_backend(run_backend_tests(project=project,goal='test',test_filter=test_filter,
+        allow_network=allow_network,explicit_developer_approval=explicit_developer_approval,approval_quote=approval_quote))
     elif kind=='api':
         if project is None:
             import backend_runner
@@ -1444,7 +1467,8 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
         if project is None:result=response('blocked',reason='Choose the backend project for managed live HTTP verification')
         else:
             import managed_backend
-            result=managed_backend.run(ROOT,project)
+            result=managed_backend.run(ROOT,project,allow_network=allow_network,
+                explicit_developer_approval=explicit_developer_approval,approval_quote=approval_quote)
     elif kind=='web':result=run_project_web_tests(project)
     elif kind=='web_verify':
         import web_acceptance
@@ -1461,6 +1485,12 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
     else:
         result=run_project_mobile_tests(project, relative_path)
     params={'project':project or result.get('project'),'test_filter':test_filter,'relative_path':relative_path}
+    if kind in ('backend','api'):
+        params.update(network_allowed=bool(result.get('network_allowed',False)),
+                      network_policy=result.get('network_policy','offline'),
+                      network_usage=result.get('network_usage','unknown'),
+                      network_scope=result.get('network_scope','Maven/Gradle dependency resolution only; project test code is not OS-network-isolated'))
+        if allow_network:params['network_approval_quote']=approval_quote
     if env_digest:params['environment_fingerprint']=env_digest
     if workspace_before:
         try:
@@ -1610,6 +1640,7 @@ def _orchestration_action(action, args):
             return response('ready',plan_id=report['plan_id'],tasks=data,codex_usage_reported_tasks=sum(x['provider_usage']['tokens'] is not None for x in data),note='Only CLI-reported token counts. Unreported provider/Lead usage and savings remain unknown.')
         if action=='extend':return orch.extend_plan(ROOT,args.get('plan_id'),args.get('items'))
         if action=='defer':return orch.defer_until_idle(ROOT,args.get('plan_id'),args.get('item_id'),args.get('reason'))
+        if action=='supersede':return orch.supersede_work_item(ROOT,args.get('plan_id'),args.get('item_id'),args.get('replacement_item_id'),args.get('reason'))
         if action=='inspect':return orch.inspect_files(ROOT,args.get('files'))
         if action=='record_inspection':return orch.inspection(ROOT,args.get('plan_id'),args.get('item_id'),args.get('evidence'),args.get('followup_items'))
         if action=='delegate':
@@ -1907,7 +1938,7 @@ CALLS={
        'task_code_review':lambda args:_code_review('status',args),
        'record_code_review':lambda args:_code_review('record',args),
        **{name:(lambda args, action=action:_evolution(action,args)) for name,action in {'learning_report':'learning','record_engineering_lesson':'lesson','code_health':'health','stage_evolution':'stage','validate_evolution':'validate','evolution_status':'status','queue_evolution':'queue','cancel_evolution':'cancel','export_toolkit':'export'}.items()},
-       **{name:(lambda args, action=action:_orchestrate(action,args)) for name,action in {'plan_work':'plan','extend_work_plan':'extend','defer_work_item':'defer','work_plan_status':'status','work_plan_usage':'usage','inspect_workspace_files':'inspect','record_lead_inspection':'record_inspection','start_lead_implementation':'lead_start','take_over_builder_task':'takeover','lead_edit_files':'lead_edit','complete_lead_implementation':'lead_finish','review_work_slice':'slice_review','prepare_checkpoint_acceptance':'checkpoint'}.items()},'workspace_overview':lambda args:_workspace_op('inspect',args.get('action','overview'),args.get('relative_path',''),args.get('pattern',''),args.get('max_results',80)),
+       **{name:(lambda args, action=action:_orchestrate(action,args)) for name,action in {'plan_work':'plan','extend_work_plan':'extend','defer_work_item':'defer','supersede_work_item':'supersede','work_plan_status':'status','work_plan_usage':'usage','inspect_workspace_files':'inspect','record_lead_inspection':'record_inspection','start_lead_implementation':'lead_start','take_over_builder_task':'takeover','lead_edit_files':'lead_edit','complete_lead_implementation':'lead_finish','review_work_slice':'slice_review','prepare_checkpoint_acceptance':'checkpoint'}.items()},'workspace_overview':lambda args:_workspace_op('inspect',args.get('action','overview'),args.get('relative_path',''),args.get('pattern',''),args.get('max_results',80)),
        'workspace_diagnostics':lambda args:_workspace_op('diagnostics',args.get('action','toolchain'),args.get('project',''),args.get('ports')),
        'workspace_logs':lambda args:_workspace_op('logs',args.get('relative_path'),args.get('pattern',''),args.get('lines',120)),
        'workspace_processes':lambda args:_workspace_op('processes'),
@@ -1938,7 +1969,7 @@ CALLS={
        'finish_mobile_verification':lambda args:finish_mobile_verification(),
        'acceptance_evidence_detail':lambda args:acceptance_evidence_detail(args.get('task_id'),args.get('check_id'),args.get('include_logs',False)),
        'prepare_builder_dependencies':lambda args:prepare_builder_dependencies(args.get('project'),args.get('allow_network',False),args.get('explicit_developer_approval',False),args.get('approval_quote','')),
-       'run_backend_tests':lambda args:_standalone_verification('backend',args.get('project'),lambda:run_backend_tests(args.get('project'),args.get('goal','test'),args.get('test_filter'),args.get('offline',False))),
+       'run_backend_tests':lambda args:_standalone_verification('backend',args.get('project'),lambda:run_backend_tests(args.get('project'),args.get('goal','test'),args.get('test_filter'),args.get('offline'),args.get('allow_network',False),args.get('explicit_developer_approval',False),args.get('approval_quote',''))),
        'run_http_smoke':lambda args:run_http_smoke(),
        'run_local_api_checks':lambda args:run_local_api_checks(args.get('relative_path'))}
 
@@ -2004,7 +2035,7 @@ def handle(request, *, cancel_event=None, progress=None):
             elif name=='wait_for_builder' and cancel_event is not None:
                 out=wait_for_builder(args.get('task_id'),args.get('timeout_seconds',BUILDER_WAIT_SECONDS),cancel_event=cancel_event,progress=progress)
             elif name=='run_task_acceptance_check' and cancel_event is not None:
-                out=run_task_acceptance_check(args.get('task_id'),args.get('kind'),args.get('project'),args.get('test_filter'),args.get('relative_path'),args.get('force',False),cancel_event=cancel_event)
+                out=run_task_acceptance_check(args.get('task_id'),args.get('kind'),args.get('project'),args.get('test_filter'),args.get('relative_path'),args.get('force',False),args.get('allow_network',False),args.get('explicit_developer_approval',False),args.get('approval_quote',''),cancel_event=cancel_event)
             elif name in ('prepare_builder_dependencies','verify_delegated_backend_task','finalize_delegated_task','prepare_checkpoint_acceptance','review_work_slice','validate_evolution') and __import__('verification_coordination').active(ROOT):
                 out=response('blocked',blocker='verification_active',reason='Collect active verification before starting another gate or integrated review')
             elif name=='validate_evolution' and cancel_event is not None:
