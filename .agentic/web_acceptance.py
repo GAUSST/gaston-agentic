@@ -160,7 +160,7 @@ def run_browser(root, project, *, execute, external_url=None, visible=False):
             'reason':'No isolated startup contract: configure Playwright webServer or gaston-web-e2e.json with backend_project. Do not restart Lead or export variables to repair this.'}
 
 
-def execute_owned(argv, *, cwd, env, timeout):
+def execute_owned(argv, *, cwd, env, timeout, log_dir=None):
     """Playwright webServer and browser processes belong to this invocation."""
     from platform_compat import popen_kwargs, stop_owned
     proc=None
@@ -168,7 +168,10 @@ def execute_owned(argv, *, cwd, env, timeout):
     try:
         proc=subprocess.Popen(argv,cwd=cwd,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,**popen_kwargs())
         out,err=proc.communicate(timeout=timeout)
+        from platform_compat import persist_verification_log
+        log_path=persist_verification_log(log_dir,out,err)
         result.update(exit_code=proc.returncode,stdout=out[-9000:],stderr=err[-9000:])
+        if log_path:result['log_path']=log_path
     except (OSError,subprocess.TimeoutExpired) as exc:
         result['reason']=type(exc).__name__
     finally:
