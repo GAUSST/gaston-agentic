@@ -1457,9 +1457,19 @@ def _run_reserved_acceptance(task_id,kind,project,test_filter,relative_path,forc
                 previous=evidence_efficiency.matching_backend_evidence(ROOT,folder,project,test_filter,workspace_before,env_digest)
                 if previous:
                     source,prior=previous
-                    entry=acceptance_audit.record(folder,'backend',prior['evidence'],parameters={
+                    prior_parameters=prior.get('parameters') or {}
+                    prior_evidence=prior.get('evidence') or {}
+                    reused_parameters={
                         'project':project,'test_filter':test_filter,'relative_path':relative_path,
-                        'workspace_fingerprint':workspace_before,'environment_fingerprint':env_digest},
+                        'workspace_fingerprint':workspace_before,'environment_fingerprint':env_digest,
+                        'network_allowed':prior_parameters.get('network_allowed',prior_evidence.get('network_allowed')),
+                        'network_policy':prior_parameters.get('network_policy',prior_evidence.get('network_policy','unknown')),
+                        'network_usage':prior_parameters.get('network_usage',prior_evidence.get('network_usage','unknown')),
+                        'network_scope':prior_parameters.get('network_scope',prior_evidence.get('network_scope','unknown')),
+                    }
+                    if prior_parameters.get('network_approval_quote'):
+                        reused_parameters['network_approval_quote']=prior_parameters['network_approval_quote']
+                    entry=acceptance_audit.record(folder,'backend',prior['evidence'],parameters=reused_parameters,
                         reused_from={'task_id':source.name,'check_id':prior['id']})
                     return response('pass',task_id=task_id,check_id=entry['id'],kind=kind,
                                     evidence=prior['evidence'],reused=True,reused_from=entry['reused_from'],
