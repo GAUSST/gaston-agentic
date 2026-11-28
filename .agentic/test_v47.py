@@ -90,7 +90,7 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         with patch.object(backend_runner,'installed_jdks',return_value=[]), \
              patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), \
              patch.object(backend_runner.subprocess,'run',side_effect=execute):
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(result['status'],'pass')
         self.assertEqual(result['resolution_mode'],'online_fallback')
         self.assertEqual(seen['argv'][0],str(wrapper))
@@ -111,9 +111,11 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_explicit_authorization_retries_online_once_after_dependency_block(self):
         offline={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
                  'reason':'parent POM not cached','runner':'mvnw','elapsed_seconds':1.2}
-        online={'status':'pass','runner':'mvnw','exit_code':0,'elapsed_seconds':8.4}
+        online={'status':'pass','runner':'mvnw','exit_code':0,'elapsed_seconds':8.4,'network_allowed':True,
+                'network_usage':'download_observed','network_attempted':True,
+                'network_scope':'Maven dependency resolution only'}
         with patch.object(backend_runner,'run',side_effect=[offline,online]) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(run.call_count,2)
         self.assertEqual(run.call_args_list[0].kwargs,{'goal':'test-compile','offline':True,'allow_network':False,'timeout':300})
         self.assertEqual(run.call_args_list[1].kwargs,{'goal':'test-compile','offline':False,'allow_network':True,'timeout':300})
@@ -126,7 +128,7 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_network_fallback_does_not_retry_cache_permission_failure(self):
         blocked={'status':'blocked','reason_code':'CACHE_UNAVAILABLE','reason':'read-only cache'}
         with patch.object(backend_runner,'run',return_value=blocked) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         run.assert_called_once()
         self.assertEqual(result['reason_code'],'CACHE_UNAVAILABLE')
         self.assertNotIn('network_attempted',result)
@@ -134,15 +136,16 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
     def test_network_fallback_does_not_retry_source_compile_failure(self):
         failed={'status':'fail','reason_code':None,'reason':'Java source compilation error'}
         with patch.object(backend_runner,'run',return_value=failed) as run:
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         run.assert_called_once()
         self.assertEqual(result['status'],'fail')
 
     def test_online_fallback_stays_blocked_when_sandbox_denies_network(self):
         offline={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'not cached'}
-        online={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'unknown host'}
+        online={'status':'blocked','reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE','reason':'unknown host',
+                'network_allowed':True,'network_usage':'request_observed','network_attempted':True}
         with patch.object(backend_runner,'run',side_effect=[offline,online]):
-            result=builder_compile.check(self.root,'backend',allow_network=True)
+            result=builder_compile.check(self.root,'backend',allow_network=True,approval_quote='Approved for this test')
         self.assertEqual(result['status'],'blocked')
         self.assertTrue(result['network_attempted'])
         self.assertIn('sandbox',result['reason'])
@@ -224,7 +227,8 @@ class StrictCompileReceiptTests(unittest.TestCase):
 
     def test_builder_and_lead_prompts_require_explicit_network_authorization(self):
         import eng
-        self.assertIn('--allow-network',eng.builder_runtime_brief())
+        self.assertNotIn('--allow-network',eng.builder_runtime_brief())
+        self.assertIn('prepare_builder_dependencies',eng.builder_runtime_brief())
         self.assertIn('developer approval',eng.builder_runtime_brief())
         self.assertIn('Never infer network consent',eng.lead_runtime_brief())
 
