@@ -86,7 +86,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
     if network_allowed and (explicit_developer_approval is not True or not isinstance(approval_quote,str) or not approval_quote.strip()):
         return {'status':'blocked','project':relative_path,'managed_application':False,
                 'reason':'Online backend verification requires explicit developer approval',
-                'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool',
+                'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
                 'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     try:
         if not isinstance(relative_path,str) or Path(relative_path).is_absolute() or '..' in Path(relative_path).parts:raise ValueError('Choose a workspace-relative Maven project')
@@ -106,7 +106,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
             return {'status':'blocked','project':relative_path,'managed_application':False,
                     'reason_code':'DEPENDENCY_RESOLUTION_UNAVAILABLE',
                     'reason':'Pinned Maven Wrapper distribution cannot be verified as cached; online fallback requires explicit approval',
-                    'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool',
+                    'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool','network_attempted':False,
                 'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     except (ValueError,OSError,AttributeError) as exc:
         return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False,
@@ -170,6 +170,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
             try:
                 startup_text=(Path(td)/'startup.log').read_text(encoding='utf8',errors='replace')
                 result['network_usage']=backend_runner.dependency_network_usage(startup_text,'',network_allowed)
+                result['network_attempted']=result['network_usage'] in ('request_observed','download_observed')
                 from platform_compat import persist_verification_log
                 log_path=persist_verification_log(local/'verification-logs',startup_text,captured_stdout+'\n'+captured_stderr)
                 if log_path:result['log_path']=Path(log_path).resolve().relative_to(root).as_posix()
