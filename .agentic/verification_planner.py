@@ -38,8 +38,22 @@ def infer_path_areas(paths: list[str]) -> tuple[set[str], set[str]]:
                 or name.endswith(('repository.java', 'repository.kt', 'entity.java', 'entity.kt', 'dao.java'))):
             areas.update(('database', 'backend'))
             ripple.add('api_integration')
-        if (tokens & {'controller', 'controllers', 'endpoint', 'endpoints', 'openapi', 'graphql', 'proto', 'route', 'routes'}
-                or any(name.endswith(suffix) for suffix in ('controller.java','endpoint.java','controller.kt','endpoint.kt','openapi.yaml','openapi.json'))):
+        # "controller" is also common in Flutter widget/controller filenames.
+        # Treat it as an API signal only for server-side source files; a Dart
+        # controller remains mobile code and must not require api_integration.
+        controller_marker = bool(tokens & {'controller', 'controllers'})
+        source_suffix = PurePosixPath(path).suffix
+        server_context = bool(tokens & {'backend', 'server', 'api'})
+        server_language = source_suffix in {'.java', '.kt', '.py', '.go', '.cs', '.rb', '.php', '.rs'}
+        js_ts_server_controller = server_context and source_suffix in {'.js', '.jsx', '.ts', '.tsx'}
+        server_controller_name = name.endswith(('controller.java', 'controller.kt'))
+        is_backend_controller = (
+            server_controller_name
+            or (controller_marker and (server_language or js_ts_server_controller))
+        )
+        if (tokens & {'endpoint', 'endpoints', 'openapi', 'graphql', 'proto', 'route', 'routes'}
+                or is_backend_controller
+                or any(name.endswith(suffix) for suffix in ('endpoint.java','endpoint.kt','openapi.yaml','openapi.json'))):
             areas.add('api')
             if path.endswith(('.java', '.kt')): areas.add('backend')
             ripple.update(('flutter_tests', 'web_e2e'))

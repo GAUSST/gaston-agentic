@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "release": "v1.7.6",
+  "release": "v1.7.7",
   "files": {
     ".agentic/LAUNCHER.md": "b59e4b2414bc3d0bb9e12d75802c50c6805582b241305f513265e178323c1bd0",
     ".agentic/acceptance_audit.py": "e74d57e1e2a900ae2e55f6314f4421a47b0ecfa4cc5199da82e1ad0a00bdcc50",
@@ -81,14 +81,14 @@
     ".agentic/uninstall.py": "060c343c31af86feb5d452f71f8f67ad26ade28c4129eb4a186d4caafdd3c2cc",
     ".agentic/verification_brief.py": "9c52eec618404bb344cfa142aea017e705154df7b8417f39fa7c8d320307a1e4",
     ".agentic/verification_mcp.py": "e05299d1b7cf728b0b13e3b6cc7319c5a93d744c0af4ada1eda2992c4ddebdf0",
-    ".agentic/verification_planner.py": "dec0dd48ad07410678d9a3a829ec920bd3802ca33eff95f405280dbfcbbee176",
+    ".agentic/verification_planner.py": "9e4546b269f946aff4b6dea1acc217c275d19c2e242537da0bd9582cf9ddee2e",
     ".agentic/workspace_checks.py": "6d6e4e8cd8cca962ae1fb9143167e294d7c989bc775f432d0104fc8edb983bf5",
     ".agentic/workspace_git.py": "c0c96ebdaece3c1c16dc29b696a5f518288f370839636f7d1b19c41f44fcddfd",
     ".agents/skills/backend-assurance/SKILL.md": "82386ff20403de7adc0c8b099e80fa4bd9831f6a9bde60dc29a6a4c2417ac764",
     ".agents/skills/e2e-feature/SKILL.md": "7206232eb7be69e26e46649298b3978c26943ec6c69e26b2f95df280833d6ae6",
     ".agents/skills/fintech-invariants/SKILL.md": "c9eb6d6593fe23a6cd6548b463d8ed63d2b40234eaa21d15720080627825c39d",
     ".claude/skills/independent-review/SKILL.md": "8d47180b5fc2bcd704777fd4f52978e0b55bf0267f456f6c3ae2d46e0dc4fe9b",
-    ".github/workflows/native-cli-validation.yml": "73b0f7e3bae24a612c61ed0e223a1990a957d9ef634355059647ba27de4d9101",
+    ".github/workflows/native-cli-validation.yml": "b06e5bff15a4fefeb6ec4510be802487e754e510d8052a3da406ea851b6727d4",
     ".gitignore": "aee9a26edb532f46770562fb43af5c321820fde7f9d1d45b3d38e05577301495",
     "AGENTS.md": "74c0cf9637ce25db9a8a3f965c4716bf77e8b20257771fc040229130bf72a064",
     "CLAUDE.md": "2f92d9a7e88aece5432fbfdef3bfc73da5e415dfd5a969fa4c682676983c80b8",
@@ -99,11 +99,11 @@
     "docs/LESSONS.md": "b8211cd33cfcda60f43832ba5829b418f588b396982660c4f4fda22303291625",
     "docs/VERIFICATION.md": "66eeda69e2176dbc1ded549c0faf1660a274a382753a0dccafb72d4ca1248b61",
     "gaston_cli.py": "1479441f8c6cfecc15939ffa378da2de134da2d64a541e77ea4bc008dfa12b36",
-    "pyproject.toml": "18b6081220d083f191c8963e6fecc5e7f2b53cd9e14ab6171f8de8468f6d4663",
+    "pyproject.toml": "e8c55147863278294c85f9f9b6a26bf6b4856994fbb7216963335858aeaa5407",
     ".agentic/updater.py": "b35732f6235c7163e62cd7dd50aef98c4a17abe0c84c5365295b8020025c9234",
     ".agentic/test_updater.py": "8dd34914c13e0829e81ad94454034575b190efa69ed6699d4c52a907620e1215",
     ".github/workflows/release.yml": "e9fd516713945ed1b752306ee53fbd61a6ab5a8c895d147851b0b31b343c62d2",
-    "docs/UPDATES.md": "9003086276a628e25e9ef0cf3c785cdf3060b780b6341babe7ee9d89f5e381dd",
+    "docs/UPDATES.md": "664a0b824208be6a0812085cb7126f1fcdceddce4ff619a9c9ed188e466e588c",
     ".agentic/test_engineering_quality_contract.py": "114a3332d0ace26d88c38c3fd4598a22d7bb7733954127dba116629447b44b34",
     ".gitattributes": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c",
     ".agentic/project_layout.py": "0ba12cdaa9b60a041eba4710e1d9ae93e16596c7004a7c825e1a8edd0cbfac19",
@@ -131,7 +131,8 @@
     ".agentic/visual_web.py": "887c667b51a66db0dc9f3826ed5c556937aeb385672361dc09c1ca7851a2cbeb",
     ".agentic/test_central_visual_web.py": "c5ff16aeb72b660ea375c08b83abc85fc5947eda782c919ad3cb6aff4e585594",
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b",
-    ".agentic/test_run_process_encoding.py": "137cb757c24bdf7970f2ad8c1b2e5556684a8d3865d64b7a8aadd1607d4034b2"
+    ".agentic/test_run_process_encoding.py": "137cb757c24bdf7970f2ad8c1b2e5556684a8d3865d64b7a8aadd1607d4034b2",
+    ".agentic/test_verification_planner.py": "e95e7031c413d3b145c608bc10fb086b5edfbba6b957fa20d36f86e87018b3aa"
   },
-  "build": "1.7.6"
+  "build": "1.7.7"
 }

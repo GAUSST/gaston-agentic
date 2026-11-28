@@ -1,5 +1,12 @@
 # Publishing and updating Gaston
 
+## v1.7.7
+
+- Fix verification path inference so Flutter/Dart widget and UI controllers are classified as mobile work, not backend API controllers.
+- Preserve API integration coverage for Java/Kotlin controllers and server-side Python, Go, C#, Ruby, PHP, Rust, and backend-scoped JavaScript/TypeScript controllers.
+- Add regression coverage for Flutter toast controllers and real backend controller paths across the native CI matrix.
+
+
 ## Central installations (v1.6+)
 
 Run `dev update` from anywhere. It always updates the globally installed Gaston engine: it verifies the latest signed annotated release and exact-commit manifest, asks one yes/no question (default Yes), stages the verified engine in the global version store, and activates it through the version pointer.
