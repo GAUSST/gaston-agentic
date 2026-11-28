@@ -146,8 +146,8 @@ def _wrapper_distribution_name(properties: Path) -> str | None:
     if not match:return None
     from urllib.parse import urlsplit
     name=Path(urlsplit(match.group(1).strip()).path).name
-    for suffix in ('-bin.tar.gz','-bin.zip','.tar.gz','.zip'):
-        if name.endswith(suffix):return name[:-len(suffix)].removesuffix('-bin')
+    for suffix in ('-bin.tar.gz','-all.zip','-bin.zip','.tar.gz','.zip'):
+        if name.endswith(suffix):return name[:-len(suffix)].removesuffix('-bin').removesuffix('-all')
     return None
 
 
