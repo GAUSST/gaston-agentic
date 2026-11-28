@@ -20,8 +20,12 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         (self.project/'pom.xml').write_text('<project/>')
 
     def test_executable_project_wrapper_wins_over_system_maven(self):
+        self._add_maven_wrapper_properties()
         wrapper=self.project/'mvnw'
         wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/maven-user/wrapper/dists/'
+              'apache-maven-3.9.9-bin/hash/apache-maven-3.9.9/bin/mvn')
+        dist.parent.mkdir(parents=True);dist.write_text('#!/bin/sh\nexit 0\n')
         seen={}
         def run(argv,**kwargs):
             seen['argv']=argv
@@ -39,6 +43,16 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         properties.parent.mkdir(parents=True)
         properties.write_text('distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip\n')
         return properties
+
+    def test_unconfigured_wrapper_is_blocked_offline(self):
+        wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
+        with patch.object(backend_runner,'installed_jdks',return_value=[]), \\
+             patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), \\
+             patch.object(backend_runner.subprocess,'run') as run:
+            result=backend_runner.run(self.root,'backend',goal='test-compile',offline=True,allow_network=False)
+        self.assertEqual(result['status'],'blocked')
+        self.assertEqual(result['reason_code'],'DEPENDENCY_RESOLUTION_UNAVAILABLE')
+        run.assert_not_called()
 
     def test_cached_wrapper_distribution_allows_offline_execution(self):
         self._add_maven_wrapper_properties()
