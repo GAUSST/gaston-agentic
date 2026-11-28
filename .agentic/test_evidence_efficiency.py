@@ -248,7 +248,7 @@ class EvidenceEfficiencyTests(unittest.TestCase):
             'status':'fail',
             'project':'frontend',
             'checks':{
-                'test':{'exit_code':1,'stdout':'x'*5000,'stderr':'specific failure '+('y'*4000),
+                'test':{'exit_code':1,'stdout':'x'*5000,'stderr':'specific failure '+('y'*4000)+' token=secretvalue',
                         'log_path':'.agentic/local/verification-logs/test.log'},
                 'build':{'exit_code':0,'stdout':'z'*5000,'stderr':''},
             },
@@ -258,6 +258,8 @@ class EvidenceEfficiencyTests(unittest.TestCase):
         build=compacted['checks']['build']
         self.assertNotIn('stdout',test)
         self.assertLessEqual(len(test['stderr_excerpt']),efficient.MAX_TOOL_DIAGNOSTIC)
+        self.assertIn('[REDACTED]',test['stderr_excerpt'])
+        self.assertNotIn('secretvalue',test['stderr_excerpt'])
         self.assertEqual(test['log_path'],'.agentic/local/verification-logs/test.log')
         self.assertNotIn('stdout',build)
         self.assertNotIn('stderr_excerpt',build)
