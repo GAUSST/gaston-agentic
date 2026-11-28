@@ -111,7 +111,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
     except (ValueError,OSError,AttributeError) as exc:
         return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False,
                 'network_allowed':network_allowed,'network_policy':'approved_online' if network_allowed else 'offline',
-                'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool',
+                'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool','network_attempted':False,
                 'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
@@ -170,7 +170,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
             try:
                 startup_text=(Path(td)/'startup.log').read_text(encoding='utf8',errors='replace')
                 result['network_usage']=backend_runner.dependency_network_usage(startup_text,'',network_allowed)
-                result['network_attempted']=result['network_usage'] in ('request_observed','download_observed')
+                result['network_attempted']=backend_runner.dependency_network_attempted(result['network_usage'])
                 from platform_compat import persist_verification_log
                 log_path=persist_verification_log(local/'verification-logs',startup_text,captured_stdout+'\n'+captured_stderr)
                 if log_path:result['log_path']=Path(log_path).resolve().relative_to(root).as_posix()
