@@ -203,7 +203,10 @@ def execute(argv, *, cwd=None, env=None, timeout=60, output_limit=9000):
             coordination.begin_windows_command(ROOT,job_name)
         result = run_verification_process(argv, cwd=cwd, env=env, timeout=timeout,
                                           output_limit=output_limit, cancel_event=_VERIFICATION_CANCEL.get(),
-                                          job_name=job_name)
+                                          job_name=job_name,log_dir=LOCAL/'verification-logs')
+        if isinstance(result.get('log_path'),str):
+            try:result['log_path']=Path(result['log_path']).resolve().relative_to(ROOT.resolve()).as_posix()
+            except (OSError,ValueError):result.pop('log_path',None)
         if job_name and result.get('owned_processes_terminated') is True:
             coordination.confirm_windows_cleanup(ROOT,job_name)
         return result
@@ -219,7 +222,11 @@ def _execute_browser(argv, *, cwd, env, timeout):
     if execute is not _DEFAULT_EXECUTE:
         return execute(argv,cwd=cwd,env=env,timeout=timeout)
     import web_acceptance
-    return web_acceptance.execute_owned(argv,cwd=cwd,env=env,timeout=timeout)
+    result=web_acceptance.execute_owned(argv,cwd=cwd,env=env,timeout=timeout,log_dir=LOCAL/'verification-logs')
+    if isinstance(result.get('log_path'),str):
+        try:result['log_path']=Path(result['log_path']).resolve().relative_to(ROOT.resolve()).as_posix()
+        except (OSError,ValueError):result.pop('log_path',None)
+    return result
 
 
 def sdk_tool(name):
