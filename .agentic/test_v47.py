@@ -246,7 +246,7 @@ class StrictCompileReceiptTests(unittest.TestCase):
 
     def test_builder_and_lead_prompts_require_explicit_network_authorization(self):
         import eng
-        self.assertNotIn('--allow-network',eng.builder_runtime_brief())
+        self.assertIn('offline-only',eng.builder_runtime_brief())
         self.assertIn('prepare_builder_dependencies',eng.builder_runtime_brief())
         self.assertIn('developer approval',eng.builder_runtime_brief())
         self.assertIn('Never infer network consent',eng.lead_runtime_brief())
