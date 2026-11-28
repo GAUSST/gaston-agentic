@@ -44,6 +44,27 @@ class BuilderNetworkPolicyTests(unittest.TestCase):
         properties.write_text('distributionUrl=https://repo.maven.apache.org/maven2/org/apache/maven/apache-maven/3.9.9/apache-maven-3.9.9-bin.zip\n')
         return properties
 
+    def test_cached_gradle_all_distribution_allows_offline_execution(self):
+        (self.project/'build.gradle').write_text('plugins {}')
+        properties=self.project/'.gradle/wrapper/gradle-wrapper.properties'
+        properties.parent.mkdir(parents=True)
+        properties.write_text('distributionUrl=https://services.gradle.org/distributions/gradle-8.8-all.zip\\n')
+        wrapper=self.project/'gradlew';wrapper.write_text('#!/bin/sh\\nexit 0\\n');wrapper.chmod(0o755)
+        dist=(self.root/'.agentic/local/backend-dependencies/gradle-home/wrapper/dists/'
+              'gradle-8.8-all/hash/gradle-8.8/bin/gradle')
+        dist.parent.mkdir(parents=True);dist.write_text('cached')
+        seen={}
+        def execute(argv,**kwargs):
+            seen['argv']=argv
+            return subprocess.CompletedProcess(argv,0,stdout='BUILD SUCCESS',stderr='')
+        with patch.object(backend_runner,'installed_jdks',return_value=[]), \\
+             patch.object(backend_runner.shutil,'which',return_value='/usr/bin/gradle'), \\
+             patch.object(backend_runner.subprocess,'run',side_effect=execute):
+            result=backend_runner.run(self.root,'backend',goal='test-compile',offline=True,allow_network=False)
+        self.assertEqual(result['status'],'pass')
+        self.assertEqual(result['runner'],'gradlew')
+        self.assertIn('--offline',seen['argv'])
+
     def test_unconfigured_wrapper_is_blocked_offline(self):
         wrapper=self.project/'mvnw';wrapper.write_text('#!/bin/sh\nexit 0\n');wrapper.chmod(0o755)
         with patch.object(backend_runner,'installed_jdks',return_value=[]), patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn'), patch.object(backend_runner.subprocess,'run') as run:
