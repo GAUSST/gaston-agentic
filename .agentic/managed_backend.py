@@ -126,6 +126,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
     result={'status':'blocked','project':relative_path,'managed_application':False,
             'network_allowed':network_allowed,'network_policy':'approved_online' if network_allowed else 'offline',
             'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool',
+            'network_attempted':None if network_allowed else False,
             'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     proc=None
     captured_stdout='';captured_stderr=''
@@ -176,6 +177,7 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                 if log_path:result['log_path']=Path(log_path).resolve().relative_to(root).as_posix()
             except (OSError,ValueError):
                 if network_allowed:result['network_usage']='unknown'
+                result['network_attempted']=None if network_allowed else False
             if proc:
                 try:_stop(proc);result['process_cleanup']='complete'
                 except (OSError,subprocess.TimeoutExpired):result.update(status='blocked',process_cleanup='failed',reason='Could not confirm owned application termination')
