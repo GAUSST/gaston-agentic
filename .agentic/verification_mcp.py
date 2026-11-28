@@ -1073,7 +1073,7 @@ def _checkpoint_current(folder):
     task=orch.read_record(folder/'task.json')
     if not task.get('checkpoint_acceptance'):return True
     report=orch.plan_status(ROOT,task['work_plan_id'])
-    return report.get('checkpoint_task_id')==folder.name and report.get('all_items_done') is True
+    return report.get('checkpoint_task_id')==folder.name and report.get('all_items_resolved') is True
 
 def _requires_integrated_checkpoint(folder):
     task=orch.read_record(folder/'task.json')
@@ -1785,7 +1785,7 @@ def review_work_slice(args):
 def prepare_checkpoint_acceptance(args):
     import eng
     pid=args.get('plan_id');plan=orch.get_plan(ROOT,pid);report=orch.plan_status(ROOT,pid)
-    if not report['all_items_done']:return response('blocked',reason='Complete every Lead investigation and implementation slice first',work_plan=report)
+    if not report.get('all_items_resolved',report['all_items_done']):return response('blocked',reason='Complete every replacement Lead investigation and implementation slice first',work_plan=report)
     if orch.active_builders(ROOT):raise ValueError('No integrated acceptance while a Builder is active')
     if plan.get('checkpoint_task_id'):return response('ready',task_id=plan['checkpoint_task_id'],work_plan=report)
     ids=[x['task_id'] for x in report['items'] if x.get('task_id')]
