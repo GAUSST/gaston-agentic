@@ -48,12 +48,23 @@ def _document_digest(folder, name, *, allow_deleted=False):
     return h.hexdigest()
 
 
+def _integration_fingerprint(folder, required):
+    revision=acceptance_audit.revision_fingerprint(folder)
+    if revision is None:return None
+    h=hashlib.sha256()
+    h.update(str(revision).encode('utf8'))
+    for name in required:
+        try:digest=_document_digest(folder,name,allow_deleted=True)
+        except (OSError,ValueError):digest='<unavailable>'
+        h.update(b'\0'+name.encode('utf8')+b'\0'+digest.encode('utf8'))
+    return h.hexdigest()
+
+
 def report(folder):
     previous=task_runtime.read_record(folder/'lead-documentation-review.json')
     prior_notes=previous.get('documents',{})
     if not isinstance(prior_notes,dict):prior_notes={}
     required=sorted(set(_required(folder))|set(prior_notes))
-    if not isinstance(prior_notes,dict):prior_notes={}
     prior_digests=previous.get('document_digests',{})
     if not isinstance(prior_digests,dict):prior_digests={}
     gaps=previous.get('unresolved_gaps',[])
@@ -62,9 +73,10 @@ def report(folder):
         return {'status':'not_required','required_documents':[],'missing_documents':[],
                 'reusable_documents':[],'integration_review_required':False,'unresolved_gaps':[]}
     fingerprint=acceptance_audit.revision_fingerprint(folder)
+    integration_fingerprint=_integration_fingerprint(folder,required)
     missing=[];reusable=[]
     for p in required:
-        try:digest=_document_digest(folder,p,allow_deleted=p in _changed_documents(folder))
+        try:digest=_document_digest(folder,p,allow_deleted=True)
         except (OSError,ValueError):digest=None
         if (not isinstance(prior_notes.get(p),str) or not prior_notes[p].strip()
                 or digest is None or prior_digests.get(p)!=digest):
@@ -74,7 +86,7 @@ def report(folder):
     integration_required=bool(required) and (
         not isinstance(previous.get('integration_review'),str)
         or not previous.get('integration_review','').strip()
-        or previous.get('integration_revision_fingerprint')!=fingerprint
+        or previous.get('integration_fingerprint',previous.get('integration_revision_fingerprint'))!=integration_fingerprint
     )
     return {'status':'pass' if not missing and not gaps and not integration_required else 'incomplete',
             'required_documents':required,'missing_documents':missing,
@@ -103,9 +115,10 @@ def record(folder,documents=None,gaps=None):
     if unknown:raise ValueError('Review paths outside the current documentation obligations: '+', '.join(sorted(unknown)))
     fingerprint=acceptance_audit.revision_fingerprint(folder)
     if required and fingerprint is None:raise ValueError('Cannot bind documentation review to current changed files')
+    integration_fingerprint=_integration_fingerprint(folder,required)
     merged_notes=dict(prior_notes);merged_digests=dict(prior_digests);reviewed_at=dict(prior_reviewed)
     for p in required:
-        digest=_document_digest(folder,p,allow_deleted=p in _changed_documents(folder))
+        digest=_document_digest(folder,p,allow_deleted=True)
         if p in supplied:
             merged_notes[p]=supplied[p].strip()
             merged_digests[p]=digest
@@ -117,6 +130,7 @@ def record(folder,documents=None,gaps=None):
         'document_digests':merged_digests,
         'document_reviewed_at':reviewed_at,
         'integration_review':integration.strip() if isinstance(integration,str) else previous.get('integration_review',''),
+        'integration_fingerprint':integration_fingerprint if isinstance(integration,str) else previous.get('integration_fingerprint',previous.get('integration_revision_fingerprint')),
         'integration_revision_fingerprint':fingerprint if isinstance(integration,str) else previous.get('integration_revision_fingerprint'),
         'integration_reviewed_at':time.time() if isinstance(integration,str) else previous.get('integration_reviewed_at'),
         'unresolved_gaps':gaps,
