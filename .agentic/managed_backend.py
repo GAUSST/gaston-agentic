@@ -107,7 +107,10 @@ def run(root,relative_path,*,startup_timeout=180,suite_timeout=240,browser_check
                     'reason':'Pinned Maven Wrapper distribution is not cached; online fallback requires explicit approval',
                     'network_allowed':False,'network_policy':'offline','network_usage':'not_used_by_build_tool'}
     except (ValueError,OSError,AttributeError) as exc:
-        return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False}
+        return {'status':'blocked','project':relative_path,'reason':str(exc),'managed_application':False,
+                'network_allowed':network_allowed,'network_policy':'approved_online' if network_allowed else 'offline',
+                'network_usage':'unknown' if network_allowed else 'not_used_by_build_tool',
+                'network_scope':'Maven dependency resolution only; application and test code are not OS-network-isolated'}
     with socket.socket() as sock:
         sock.bind(('127.0.0.1',0));port=sock.getsockname()[1]
     base=f'http://127.0.0.1:{port}'
