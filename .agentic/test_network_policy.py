@@ -19,9 +19,6 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
         self.root=Path(td.name).resolve()
         self.project=self.root/'backend';self.project.mkdir()
         (self.project/'pom.xml').write_text('<project/>')
-        wrapper=self.project/('mvnw.cmd' if os.name=='nt' else 'mvnw')
-        wrapper.write_text('wrapper placeholder')
-        if os.name!='nt':wrapper.chmod(0o755)
         self.calls=[]
         def run(argv,**kwargs):
             self.calls.append((argv,kwargs))
@@ -35,6 +32,8 @@ class BackendRunnerOfflinePolicyTests(unittest.TestCase):
         self.subproc.start();self.addCleanup(self.subproc.stop)
         self.run=patch.object(backend_runner.subprocess,'run',side_effect=run)
         self.run.start();self.addCleanup(self.run.stop)
+        self.maven=patch.object(backend_runner.shutil,'which',return_value='/usr/bin/mvn')
+        self.maven.start();self.addCleanup(self.maven.stop)
         self.run_env=patch.dict(os.environ,{'HTTP_PROXY':'http://proxy.invalid:8080','HTTPS_PROXY':'http://proxy.invalid:8080','NO_PROXY':'*'})
         self.run_env.start();self.addCleanup(self.run_env.stop)
 
