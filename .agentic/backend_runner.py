@@ -151,6 +151,12 @@ def _wrapper_distribution_name(properties: Path) -> str | None:
     return None
 
 
+def dependency_network_attempted(usage):
+    if usage in ('request_observed','download_observed'):return True
+    if usage=='not_used_by_build_tool':return False
+    return None
+
+
 def _wrapper_distribution_cached(properties: Path, user_home: Path, executable: str) -> bool:
     """Avoid an implicit wrapper download during an offline-only compile."""
     if not properties.is_file():return False
@@ -353,7 +359,7 @@ def run(root: Path, relative_path: str, *, goal: str = 'test', test_filter: str 
             'network_allowed':network_allowed,
             'network_policy':'approved_online' if network_allowed else 'offline',
             'network_usage':network_usage,
-            'network_attempted':network_usage in ('request_observed','download_observed'),
+            'network_attempted':dependency_network_attempted(network_usage),
             'network_scope':'Maven/Gradle dependency resolution only; project build/test code is not OS-network-isolated',
             'required_java':required,'selected_jdk':selected,'installed_jdks':available,
             'evidence':{'stdout_tail':stdout[-6000:],'stderr_tail':stderr[-4000:]},
