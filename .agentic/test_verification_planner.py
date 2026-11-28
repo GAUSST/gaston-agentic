@@ -70,5 +70,39 @@ class VerificationPlannerPathInferenceTests(unittest.TestCase):
         self.assertEqual(ripple, {"flutter_tests", "web_e2e"})
 
 
+    def test_backend_readme_and_docs_do_not_trigger_backend_or_web_gates(self):
+        paths=[
+            "backend/README.md",
+            "backend/docs/architecture.md",
+            "backend/docs/guide.html",
+        ]
+        areas,ripple=infer_path_areas(paths)
+        self.assertEqual(areas,set())
+        self.assertEqual(ripple,set())
+
+        result=select_checks({},[
+            {"name":"backend_verify"},
+            {"name":"web_e2e"},
+            {"name":"flutter_tests"},
+        ],paths,project_roots={"java":["backend"],"web":["frontend"]})
+        self.assertEqual(result["areas"],[])
+        self.assertNotIn("backend_verify",result["selected"])
+        self.assertNotIn("web_e2e",result["selected"])
+
+    def test_openapi_contract_in_backend_docs_selects_api_not_backend_build(self):
+        path="backend/docs/openapi.yaml"
+        areas,ripple=infer_path_areas([path])
+        self.assertEqual(areas,{"api"})
+        self.assertEqual(ripple,{"flutter_tests","web_e2e"})
+        result=select_checks({},[
+            {"name":"backend_verify"},
+            {"name":"api_integration"},
+            {"name":"flutter_tests"},
+            {"name":"web_e2e"},
+        ],[path],project_roots={"java":["backend"]})
+        self.assertIn("api_integration",result["selected"])
+        self.assertNotIn("backend_verify",result["selected"])
+
+
 if __name__ == "__main__":
     unittest.main()
