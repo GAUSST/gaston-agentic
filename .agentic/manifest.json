@@ -133,7 +133,7 @@
     ".agentic/test_central_mcp_parallel.py": "a9c76cfc5c8f2b1d36b31e08afbbd464b9bf5529eef4860330ed05867021b66b",
     ".agentic/test_run_process_encoding.py": "137cb757c24bdf7970f2ad8c1b2e5556684a8d3865d64b7a8aadd1607d4034b2",
     ".agentic/test_verification_planner.py": "539e53c121f64c22268a537225e6c8146e18ecdbd7a6fc87a0bdbca0d8d3a9ca",
-    ".agentic/test_network_policy.py": "4ece461efaac826a5d1adbeda0e9295d4dac0ad34cb042e6ee289b3210c0e0db",
+    ".agentic/test_network_policy.py": "67a74b9be71ad5d39edd5f0ff128c3342668e7abdb94899b86238c0335d6dcc0",
     ".agentic/test_documentation_review.py": "bdc92a427de521f87896353afb23aa1d6761ac2f30568b7b9a962dc124423e44",
     ".agentic/test_work_plan_supersession.py": "97170b367f44c0eb53b11f822df61d537e8be42a7559a6c94bc42c2bef8c7737",
     ".agentic/test_verification_logs.py": "df5516e87109aab63f6b694c160ffcf4304c6e7cbed64292f449196499dceb88"
