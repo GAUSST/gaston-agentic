@@ -143,7 +143,7 @@ def select_checks(task: dict, steps: list[dict], changed_paths: list[str],
     by_name = {s['name']: s for s in steps}
     # If there is no reliable path or task scope, fall back to safe baseline
     # checks, rather than silently skipping everything or running all E2E.
-    unknown = not areas and (not changed_paths or any(not _documentation_only(p.replace('\\\\','/').lower().strip('/')) for p in changed_paths))
+    unknown = not areas and (not changed_paths or any(not _documentation_only(p.replace('\\','/').lower().strip('/')) for p in changed_paths))
     wanted: set[str] = set(task.get('required_checks', []))
     if unknown:
         wanted.update(name for name in ('backend_verify', 'flutter_analyze', 'flutter_tests') if name in by_name)
