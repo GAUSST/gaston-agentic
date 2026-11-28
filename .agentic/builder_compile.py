@@ -1,4 +1,4 @@
-"""Sandbox-local compile-only Java preflight; never independent acceptance evidence."""
+"""Sandbox-local compile-only Java preflight; CLI invocation is offline-only."""
 from __future__ import annotations
 from project_layout import project_root, project_state, project_state_name, runtime_script, runtime_manifest, central_mode
 import argparse
